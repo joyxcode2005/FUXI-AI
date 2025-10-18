@@ -1,6 +1,7 @@
 import "./App.css";
 
 export default function App() {
+  
   const handleSearch = () => {
     chrome.tabs.create({
       url: "https://www.google.com/search?q=punkifiedayush",

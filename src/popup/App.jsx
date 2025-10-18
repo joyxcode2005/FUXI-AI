@@ -1,4 +1,43 @@
-import React, { useState, useRef } from "react";
+import { useState, useRef } from "react";
+
+// 🧩 1. Group all existing tabs under a given title
+async function groupExistingTabs(title) {
+  const tabs = await chrome.tabs.query({});
+  const tabIds = tabs.map((t) => t.id);
+  const groupId = await chrome.tabs.group({ tabIds });
+  await chrome.tabGroups.update(groupId, { title, color: "blue" });
+  console.log(`✅ Grouped all tabs under: ${title}`);
+}
+
+// 🧩 2. Rename a group by its current title
+async function renameGroup(oldTitle, newTitle) {
+  const groups = await chrome.tabGroups.query({});
+  const targetGroup = groups.find(
+    (g) => g.title.toLowerCase() === oldTitle.toLowerCase()
+  );
+  if (targetGroup) {
+    await chrome.tabGroups.update(targetGroup.id, { title: newTitle });
+    console.log(`✏️ Renamed group "${oldTitle}" to "${newTitle}"`);
+  } else {
+    console.warn(`No group found with title: ${oldTitle}`);
+  }
+}
+
+// 🧩 3. Ungroup tabs from a specific group title
+async function ungroupTabs(title) {
+  const groups = await chrome.tabGroups.query({});
+  const targetGroup = groups.find(
+    (g) => g.title.toLowerCase() === title.toLowerCase()
+  );
+  if (targetGroup) {
+    const tabs = await chrome.tabs.query({ groupId: targetGroup.id });
+    const tabIds = tabs.map((t) => t.id);
+    await chrome.tabs.ungroup(tabIds);
+    console.log(`🚪 Ungrouped tabs from "${title}"`);
+  } else {
+    console.warn(`No group found with title: ${title}`);
+  }
+}
 
 export default function App() {
   const [loading, setLoading] = useState(false);
@@ -11,11 +50,9 @@ export default function App() {
   };
 
   const buildContextPrompt = (userMessage, conversationHistory) => {
-    // Build a context string from previous messages
     let context = "";
 
-    // Include the last few messages for context (adjust number as needed)
-    const recentMessages = conversationHistory.slice(-6); // Last 6 messages (3 exchanges)
+    const recentMessages = conversationHistory.slice(-6);
 
     if (recentMessages.length > 0) {
       context = "Previous conversation:\n";
@@ -26,31 +63,21 @@ export default function App() {
       context += "\n";
     }
 
-    return context + `User: ${userMessage}\nAssistant:`;
-  };
+    // 👇 Add system instruction to make Gemini output JSON when needed
+    const systemInstruction = `
+You are a Chrome Extension Assistant. 
+When the user asks to group tabs, respond ONLY in JSON as:
+{"action":"group_tabs","title":"<group name>"}
 
-  const groupExistingTabs = async (groupTitle) => {
-    // Query all tabs in the current window
-    const tabs = await chrome.tabs.query({ currentWindow: true });
+If no name is given, suggest a fitting one.
 
-    // Extract their IDs
-    const tabIds = tabs.map((tab) => tab.id);
+Otherwise, respond normally in plain text.
+`;
 
-    // Send message to background script
-    chrome.runtime.sendMessage(
-      { action: "groupExistingTabs", groupTitle, tabIds },
-      (response) => {
-        if (response.success) {
-          alert(`Grouped ${tabIds.length} tabs into "${groupTitle}"!`);
-        } else {
-          alert(`Error: ${response.error}`);
-        }
-      }
+    return (
+      systemInstruction + "\n" + context + `User: ${userMessage}\nAssistant:`
     );
   };
-
-  // Example call
-  // groupExistingTabs("Work Tabs");
 
   const handleSend = async () => {
     const text = prompt.trim();
@@ -62,20 +89,31 @@ export default function App() {
     setLoading(true);
 
     try {
-      // Create session once if it doesn't exist
       if (!sessionRef.current) {
         sessionRef.current = await LanguageModel.create({
           model: "gemini-nano",
         });
       }
 
-      // Build prompt with conversation context
       const contextPrompt = buildContextPrompt(text, messages);
-
       const reply = await sessionRef.current.prompt(contextPrompt);
 
       setLoading(false);
-      addMessage(reply, "bot");
+
+      // 👇 Try to parse JSON — if it’s an action, execute it
+      let parsed;
+      try {
+        parsed = JSON.parse(reply);
+      } catch (_) {
+        parsed = null;
+      }
+
+      if (parsed && parsed.action === "group_tabs" && parsed.title) {
+        addMessage(`✅ Grouping tabs under: ${parsed.title}`, "bot");
+        await groupExistingTabs(parsed.title);
+      } else {
+        addMessage(reply, "bot");
+      }
     } catch (err) {
       setLoading(false);
       addMessage("Error: " + err.message, "bot");
@@ -115,7 +153,7 @@ export default function App() {
             cursor: "pointer",
           }}
         >
-          Clear Chat
+          Clear
         </button>
         <button
           onClick={() => groupExistingTabs("Social Media")}

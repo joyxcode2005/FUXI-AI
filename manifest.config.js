@@ -8,7 +8,7 @@ export default defineManifest({
   icons: {
     48: "public/logo.png",
   },
-  permissions: ["sidePanel", "contentSettings", "tabs"],
+  permissions: ["sidePanel", "contentSettings", "tabs", "scripting", "tabGroups"],
   action: {
     default_icon: {
       48: "public/logo.png",

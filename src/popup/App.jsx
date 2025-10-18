@@ -1,12 +1,32 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 
 export default function App() {
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState([]);
   const [prompt, setPrompt] = useState("");
+  const sessionRef = useRef(null);
 
   const addMessage = (text, sender) => {
     setMessages((prev) => [...prev, { text, sender }]);
+  };
+
+  const buildContextPrompt = (userMessage, conversationHistory) => {
+    // Build a context string from previous messages
+    let context = "";
+    
+    // Include the last few messages for context (adjust number as needed)
+    const recentMessages = conversationHistory.slice(-6); // Last 6 messages (3 exchanges)
+    
+    if (recentMessages.length > 0) {
+      context = "Previous conversation:\n";
+      recentMessages.forEach((msg) => {
+        const role = msg.sender === "user" ? "User" : "Assistant";
+        context += `${role}: ${msg.text}\n`;
+      });
+      context += "\n";
+    }
+    
+    return context + `User: ${userMessage}\nAssistant:`;
   };
 
   const handleSend = async () => {
@@ -14,25 +34,34 @@ export default function App() {
     if (!text) return;
 
     addMessage(text, "user");
+    const currentMessages = [...messages, { text, sender: "user" }];
     setPrompt("");
-    setLoading(true)
+    setLoading(true);
+
     try {
-      // --- Replace this with your real Gemini Nano / AI API call ---
-      // Example placeholder: simulate a short response
-      const session = await LanguageModel.create({
-  model: 'gemini-nano'
-});
+      // Create session once if it doesn't exist
+      if (!sessionRef.current) {
+        sessionRef.current = await LanguageModel.create({
+          model: 'gemini-nano'
+        });
+      }
 
-const reply = await session.prompt(text);
-    setLoading(false)
-      // const reply = await fetch("https://your-api.example.com/generate", {...})
-      //   .then(res => res.json())
-      //   .then(data => data.reply);
-
+      // Build prompt with conversation context
+      const contextPrompt = buildContextPrompt(text, messages);
+      
+      const reply = await sessionRef.current.prompt(contextPrompt);
+      
+      setLoading(false);
       addMessage(reply, "bot");
     } catch (err) {
+      setLoading(false);
       addMessage("Error: " + err.message, "bot");
     }
+  };
+
+  const handleReset = () => {
+    setMessages([]);
+    sessionRef.current = null;
   };
 
   return (
@@ -44,6 +73,23 @@ const reply = await session.prompt(text);
         fontFamily: "system-ui, sans-serif",
       }}
     >
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+        <h3 style={{ margin: 0, fontSize: 14, color: "#666" }}>AI Chat</h3>
+        <button
+          onClick={handleReset}
+          style={{
+            padding: "4px 8px",
+            fontSize: 12,
+            border: "1px solid #ccc",
+            background: "#fff",
+            borderRadius: 4,
+            cursor: "pointer",
+          }}
+        >
+          Clear Chat
+        </button>
+      </div>
+
       <div
         id="chat"
         style={{
@@ -52,8 +98,14 @@ const reply = await session.prompt(text);
           gap: 8,
           maxHeight: 400,
           overflowY: "auto",
+          marginBottom: 10,
         }}
-      > {loading?<div>loading...</div> : null}
+      >
+        {loading ? (
+          <div style={{ color: "#666", fontSize: 14, padding: 8 }}>
+            loading...
+          </div>
+        ) : null}
         {messages.map((msg, i) => (
           <div
             key={i}
@@ -74,7 +126,7 @@ const reply = await session.prompt(text);
         ))}
       </div>
 
-      <div id="input" style={{ display: "flex", marginTop: 10 }}>
+      <div id="input" style={{ display: "flex" }}>
         <input
           type="text"
           value={prompt}

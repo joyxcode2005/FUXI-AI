@@ -65,13 +65,25 @@ export default function App() {
 
     // 👇 Add system instruction to make Gemini output JSON when needed
     const systemInstruction = `
-You are a Chrome Extension Assistant. 
-When the user asks to group tabs, respond ONLY in JSON as:
-{"action":"group_tabs","title":"<group name>"}
+You are a Chrome Tab Manager Assistant.
+You can perform the following actions:
 
-If no name is given, suggest a fitting one.
+1️⃣ {"action":"group_tabs","title":"<group name>"} → Group all tabs under a name.
+2️⃣ {"action":"rename_group","oldTitle":"<old name>","newTitle":"<new name>"} → Rename a group.
+3️⃣ {"action":"ungroup_tabs","title":"<group name>"} → Remove a group (ungroup its tabs).
 
-Otherwise, respond normally in plain text.
+If the user doesn’t specify a name, suggest a fitting title.
+If the user just wants to chat, respond normally in plain text.
+
+Examples:
+User: Group all tabs as Work
+→ {"action":"group_tabs","title":"Work"}
+
+User: Rename Work group to Study
+→ {"action":"rename_group","oldTitle":"Work","newTitle":"Study"}
+
+User: Ungroup Study tabs
+→ {"action":"ungroup_tabs","title":"Study"}
 `;
 
     return (
@@ -108,9 +120,29 @@ Otherwise, respond normally in plain text.
         parsed = null;
       }
 
-      if (parsed && parsed.action === "group_tabs" && parsed.title) {
-        addMessage(`✅ Grouping tabs under: ${parsed.title}`, "bot");
-        await groupExistingTabs(parsed.title);
+      if (parsed && parsed.action) {
+        switch (parsed.action) {
+          case "group_tabs":
+            addMessage(`✅ Grouping tabs under: ${parsed.title}`, "bot");
+            await groupExistingTabs(parsed.title);
+            break;
+
+          case "rename_group":
+            addMessage(
+              `✏️ Renaming "${parsed.oldTitle}" → "${parsed.newTitle}"`,
+              "bot"
+            );
+            await renameGroup(parsed.oldTitle, parsed.newTitle);
+            break;
+
+          case "ungroup_tabs":
+            addMessage(`🚪 Ungrouping tabs from: ${parsed.title}`, "bot");
+            await ungroupTabs(parsed.title);
+            break;
+
+          default:
+            addMessage(reply, "bot");
+        }
       } else {
         addMessage(reply, "bot");
       }

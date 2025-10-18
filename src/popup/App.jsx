@@ -15,16 +15,16 @@ export default function App() {
 
     addMessage(text, "user");
     setPrompt("");
-    setLoading(true)
+    setLoading(true);
     try {
       // --- Replace this with your real Gemini Nano / AI API call ---
       // Example placeholder: simulate a short response
       const session = await LanguageModel.create({
-  model: 'gemini-nano'
-});
+        model: "gemini-nano",
+      });
 
-const reply = await session.prompt(text);
-    setLoading(false)
+      const reply = await session.prompt(text);
+      setLoading(false);
       // const reply = await fetch("https://your-api.example.com/generate", {...})
       //   .then(res => res.json())
       //   .then(data => data.reply);
@@ -53,25 +53,33 @@ const reply = await session.prompt(text);
           maxHeight: 400,
           overflowY: "auto",
         }}
-      > {loading?<div>loading...</div> : null}
-        {messages.map((msg, i) => (
-          <div
-            key={i}
-            className={`msg ${msg.sender}`}
-            style={{
-              padding: "8px 10px",
-              borderRadius: 10,
-              maxWidth: "80%",
-              alignSelf: msg.sender === "user" ? "flex-end" : "flex-start",
-              background: msg.sender === "user" ? "#007aff" : "#fff",
-              color: msg.sender === "user" ? "#fff" : "#000",
-              border:
-                msg.sender === "bot" ? "1px solid #ccc" : "1px solid transparent",
-            }}
-          >
-            {msg.text}
+      >
+        {loading ? (
+          <div className="px-8 py-10 rounded-2xl items-start bg-white border-1 border-[#ccc]">
+            Loading....
           </div>
-        ))}
+        ) : (
+          messages.map((msg, i) => (
+            <div
+              key={i}
+              className={`msg ${msg.sender}`}
+              style={{
+                padding: "8px 10px",
+                borderRadius: 10,
+                maxWidth: "80%",
+                alignSelf: msg.sender === "user" ? "flex-end" : "flex-start",
+                background: msg.sender === "user" ? "#007aff" : "#fff",
+                color: msg.sender === "user" ? "#fff" : "#000",
+                border:
+                  msg.sender === "bot"
+                    ? "1px solid #ccc"
+                    : "1px solid transparent",
+              }}
+            >
+              {msg.text}
+            </div>
+          ))
+        )}
       </div>
 
       <div id="input" style={{ display: "flex", marginTop: 10 }}>

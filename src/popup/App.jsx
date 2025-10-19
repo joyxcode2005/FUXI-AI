@@ -19,6 +19,7 @@ import Button from "../components/Button";
 import { MessageCircleQuestionMark } from "lucide-react";
 import { Sparkles } from "lucide-react";
 import { SendHorizontal } from "lucide-react";
+import { Folder } from "lucide-react";
 
 export default function App() {
   const [loading, setLoading] = useState(false);
@@ -362,8 +363,9 @@ export default function App() {
           : "bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50"
       } font-sans flex flex-col transition-all duration-500`}
     >
+      {/* Header  */}
       <div
-        className={`relative px-6 py-4 ${
+        className={`sticky top-0 h-40 px-6 py-4 ${
           isDark
             ? "bg-gradient-to-r from-slate-800/40 to-indigo-900/40 backdrop-blur-xl border-b border-white/10"
             : "bg-white/60 backdrop-blur-xl border-b border-indigo-200/50"
@@ -476,178 +478,168 @@ export default function App() {
 
       {showGroupManager ? (
         // The group manager view
-        <div>
+        <div
+          className={`w-[500px] h-[600px] overflow-x-hidden ${
+            isDark
+              ? "bg-gradient-to-br from-slate-900 via-gray-800 to-slate-900"
+              : "bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50"
+          } font-sans flex flex-col transition-all duration-500`}
+        >
+          {/* Group Manager Header */}
           <div
-            className={`w-[500px] h-[600px] ${
-              isDark
-                ? "bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900"
-                : "bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50"
-            } font-sans flex flex-col transition-all duration-500`}
+            className={`flex justify-between items-center px-6 py-4 border-b border-slate-300/20 `}
           >
-            {/* Header */}
-            <div
-              className={`relative px-6 py-4 ${
-                isDark
-                  ? "bg-gradient-to-r from-purple-900/40 to-indigo-900/40 backdrop-blur-xl border-b border-white/10"
-                  : "bg-white/60 backdrop-blur-xl border-b border-indigo-200/50"
+            <h3
+              className={`text-xl uppercase font-bold tracking-tight ${
+                isDark ? "text-white" : "text-slate-900"
               }`}
             >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div>
-                    <h3
-                      className={`text-lg font-bold tracking-tight ${
-                        isDark ? "text-white" : "text-slate-900"
-                      }`}
-                    >
-                      Tab Groups
-                    </h3>
-                    <span
-                      className={`text-xs font-medium ${
-                        isDark ? "text-slate-300" : "text-slate-600"
-                      }`}
-                    >
-                      {groups.length} groups active
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
+              Tab Groups
+            </h3>
+            <span
+              className={`text-xs font-medium backdrop-blur-2xl bg-yellow-500 animate-pulse text-white px-4 py-1 rounded-xl `}
+            >
+              {groups.length > 1
+                ? `${groups.length} groups`
+                : `${groups.length} group`}
+            </span>
+          </div>
 
-            {/* Groups List */}
-            <div
-              className={`flex-1 overflow-y-auto px-6 py-5 ${
-                isDark ? "bg-slate-900/30" : "bg-white/30"
-              }`}
-            >
-              {groups.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full">
-                  <div className="text-6xl mb-4">📂</div>
-                  <p
-                    className={`text-center ${
-                      isDark ? "text-slate-300" : "text-slate-600"
+          {/* Groups List */}
+          <div
+            className={`flex-1 overflow-y-auto px-6 py-5 ${
+              isDark ? "bg-slate-900/30" : "bg-white/30"
+            }`}
+          >
+            {groups.length === 0 ? (
+              <div className="flex flex-col gap-2 items-center justify-center h-full">
+                <Folder
+                  className={` ${isDark ? "text-white" : "text-black"}`}
+                />
+                <p
+                  className={`text-center text-lg font-bold mono ${
+                    isDark ? "text-slate-300" : "text-slate-600"
+                  }`}
+                >
+                  No groups yet. Create some!
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {groups.map((group) => (
+                  <div
+                    key={group.id}
+                    className={`p-4 rounded-xl transition-all hover:scale-[1.02] ${
+                      isDark
+                        ? "bg-slate-800/80 border border-slate-700/50 shadow-lg"
+                        : "bg-white border border-slate-200 shadow-md"
                     }`}
                   >
-                    No groups yet. Create some!
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {groups.map((group) => (
-                    <div
-                      key={group.id}
-                      className={`p-4 rounded-xl transition-all hover:scale-[1.02] ${
-                        isDark
-                          ? "bg-slate-800/80 border border-slate-700/50 shadow-lg"
-                          : "bg-white border border-slate-200 shadow-md"
-                      }`}
-                    >
-                      {renamingGroup === group.title ? (
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            value={newGroupName}
-                            onChange={(e) => setNewGroupName(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter")
-                                handleRenameSubmit(group.title);
-                              if (e.key === "Escape") setRenamingGroup(null);
-                            }}
-                            className={`flex-1 px-3 py-1.5 rounded-lg text-sm focus:outline-none focus:ring-2 ${
+                    {renamingGroup === group.title ? (
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={newGroupName}
+                          onChange={(e) => setNewGroupName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter")
+                              handleRenameSubmit(group.title);
+                            if (e.key === "Escape") setRenamingGroup(null);
+                          }}
+                          className={`flex-1 px-3 py-1.5 rounded-lg text-sm focus:outline-none focus:ring-2 ${
+                            isDark
+                              ? "bg-slate-700 border border-slate-600 text-white focus:ring-purple-500/50"
+                              : "bg-white border border-slate-300 text-slate-900 focus:ring-indigo-500/50"
+                          }`}
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => handleRenameSubmit(group.title)}
+                          className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-500 to-indigo-600 text-white text-sm font-semibold hover:shadow-lg transition-all"
+                        >
+                          ✓
+                        </button>
+                        <button
+                          onClick={() => setRenamingGroup(null)}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${
+                            isDark
+                              ? "bg-slate-700 text-white hover:bg-slate-600"
+                              : "bg-slate-200 text-slate-700 hover:bg-slate-300"
+                          }`}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <div
+                              className={`w-3 h-3 rounded-full ${
+                                group.color === "blue"
+                                  ? "bg-blue-500"
+                                  : group.color === "red"
+                                  ? "bg-red-500"
+                                  : group.color === "yellow"
+                                  ? "bg-yellow-500"
+                                  : group.color === "green"
+                                  ? "bg-green-500"
+                                  : group.color === "pink"
+                                  ? "bg-pink-500"
+                                  : group.color === "purple"
+                                  ? "bg-purple-500"
+                                  : group.color === "cyan"
+                                  ? "bg-cyan-500"
+                                  : "bg-orange-500"
+                              }`}
+                            ></div>
+                            <h4
+                              className={`font-bold text-base ${
+                                isDark ? "text-white" : "text-slate-900"
+                              }`}
+                            >
+                              {group.title}
+                            </h4>
+                          </div>
+                          <span
+                            className={`text-xs px-2 py-1 rounded-full ${
                               isDark
-                                ? "bg-slate-700 border border-slate-600 text-white focus:ring-purple-500/50"
-                                : "bg-white border border-slate-300 text-slate-900 focus:ring-indigo-500/50"
+                                ? "bg-slate-700 text-slate-300"
+                                : "bg-slate-100 text-slate-600"
                             }`}
-                            autoFocus
-                          />
-                          <button
-                            onClick={() => handleRenameSubmit(group.title)}
-                            className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-500 to-indigo-600 text-white text-sm font-semibold hover:shadow-lg transition-all"
                           >
-                            ✓
+                            {group.tabCount} tabs
+                          </span>
+                        </div>
+                              
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleRenameStart(group)}
+                            className={`flex-1 px-3 py-2 rounded-lg text-sm font-semibold transition-all hover:scale-105 ${
+                              isDark
+                                ? "bg-indigo-600/80 hover:bg-indigo-600 text-white"
+                                : "bg-indigo-500 hover:bg-indigo-600 text-white"
+                            }`}
+                          >
+                            Rename
                           </button>
                           <button
-                            onClick={() => setRenamingGroup(null)}
-                            className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${
+                            onClick={() => handleUngroup(group.title)}
+                            className={`flex-1 px-3 py-2 rounded-lg text-sm font-semibold transition-all hover:scale-105 ${
                               isDark
-                                ? "bg-slate-700 text-white hover:bg-slate-600"
-                                : "bg-slate-200 text-slate-700 hover:bg-slate-300"
+                                ? "bg-red-600/80 hover:bg-red-600 text-white"
+                                : "bg-red-500 hover:bg-red-600 text-white"
                             }`}
                           >
-                            ✕
+                            🗑️ Ungroup
                           </button>
                         </div>
-                      ) : (
-                        <>
-                          <div className="flex items-start justify-between mb-3">
-                            <div className="flex items-center gap-2">
-                              <div
-                                className={`w-3 h-3 rounded-full ${
-                                  group.color === "blue"
-                                    ? "bg-blue-500"
-                                    : group.color === "red"
-                                    ? "bg-red-500"
-                                    : group.color === "yellow"
-                                    ? "bg-yellow-500"
-                                    : group.color === "green"
-                                    ? "bg-green-500"
-                                    : group.color === "pink"
-                                    ? "bg-pink-500"
-                                    : group.color === "purple"
-                                    ? "bg-purple-500"
-                                    : group.color === "cyan"
-                                    ? "bg-cyan-500"
-                                    : "bg-orange-500"
-                                }`}
-                              ></div>
-                              <h4
-                                className={`font-bold text-base ${
-                                  isDark ? "text-white" : "text-slate-900"
-                                }`}
-                              >
-                                {group.title}
-                              </h4>
-                            </div>
-                            <span
-                              className={`text-xs px-2 py-1 rounded-full ${
-                                isDark
-                                  ? "bg-slate-700 text-slate-300"
-                                  : "bg-slate-100 text-slate-600"
-                              }`}
-                            >
-                              {group.tabCount} tabs
-                            </span>
-                          </div>
-
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => handleRenameStart(group)}
-                              className={`flex-1 px-3 py-2 rounded-lg text-sm font-semibold transition-all hover:scale-105 ${
-                                isDark
-                                  ? "bg-indigo-600/80 hover:bg-indigo-600 text-white"
-                                  : "bg-indigo-500 hover:bg-indigo-600 text-white"
-                              }`}
-                            >
-                              ✏️ Rename
-                            </button>
-                            <button
-                              onClick={() => handleUngroup(group.title)}
-                              className={`flex-1 px-3 py-2 rounded-lg text-sm font-semibold transition-all hover:scale-105 ${
-                                isDark
-                                  ? "bg-red-600/80 hover:bg-red-600 text-white"
-                                  : "bg-red-500 hover:bg-red-600 text-white"
-                              }`}
-                            >
-                              🗑️ Ungroup
-                            </button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       ) : (
@@ -669,7 +661,7 @@ export default function App() {
                     className="flex justify-end animate-slide-in-right"
                   >
                     <div
-                      className="max-w-[80%] px-4 py-2.5 rounded-2xl rounded-tr-md bg-gradient-to-br from-purple-500 to-indigo-600 text-white shadow-lg text-sm leading-relaxed"
+                      className="max-w-[15rem] px-4 py-2.5 rounded-2xl rounded-tr-md bg-gradient-to-br from-purple-500 to-indigo-600 text-white shadow-lg text-sm leading-relaxed"
                       style={{ wordWrap: "break-word" }}
                     >
                       {msg.text}

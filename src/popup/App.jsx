@@ -5,14 +5,11 @@ import { systemPrompt } from "../utils";
 async function validateTabIds(tabIds) {
   const allTabs = await chrome.tabs.query({ currentWindow: true });
   const validTabIds = allTabs.map((t) => t.id);
-
-  // Convert to numbers and filter only valid, existing tabs
   return tabIds
     .map((id) => (typeof id === "number" ? id : parseInt(id, 10)))
     .filter((id) => !isNaN(id) && validTabIds.includes(id));
 }
 
-// Create multiple groups using Chrome API
 async function createMultipleGroups(groupedTabs) {
   const colors = [
     "blue",
@@ -30,35 +27,19 @@ async function createMultipleGroups(groupedTabs) {
   try {
     for (const [groupName, tabIds] of Object.entries(groupedTabs)) {
       if (tabIds.length > 0) {
-        // Validate tab IDs before grouping
         const validIds = await validateTabIds(tabIds);
-
-        if (validIds.length === 0) {
-          console.warn(`No valid tabs for group: ${groupName}`);
-          continue;
-        }
-
-        // Create the group
+        if (validIds.length === 0) continue;
         const groupId = await chrome.tabs.group({ tabIds: validIds });
-
-        // Set group title and color
         await chrome.tabGroups.update(groupId, {
           title: groupName,
           color: colors[colorIndex % colors.length],
         });
-
         successfulGroups.push(groupName);
         colorIndex++;
       }
     }
-
-    return {
-      success: true,
-      groupsCreated: successfulGroups.length,
-      groups: successfulGroups,
-    };
+    return { success: true, groupsCreated: successfulGroups.length, groups: successfulGroups };
   } catch (error) {
-    console.error("Error creating groups:", error);
     return { success: false, error: error.message };
   }
 }
@@ -74,11 +55,7 @@ async function groupExistingTabs(title, color = "blue") {
       !url.startsWith("about:")
     );
   });
-
-  if (groupableTabs.length === 0) {
-    return { success: false, error: "No groupable tabs found" };
-  }
-
+  if (groupableTabs.length === 0) return { success: false, error: "No groupable tabs found" };
   const tabIds = groupableTabs.map((t) => t.id);
   const groupId = await chrome.tabs.group({ tabIds });
   await chrome.tabGroups.update(groupId, { title, color });
@@ -87,9 +64,7 @@ async function groupExistingTabs(title, color = "blue") {
 
 async function renameGroup(oldTitle, newTitle) {
   const groups = await chrome.tabGroups.query({});
-  const targetGroup = groups.find(
-    (g) => g.title.toLowerCase() === oldTitle.toLowerCase()
-  );
+  const targetGroup = groups.find((g) => g.title.toLowerCase() === oldTitle.toLowerCase());
   if (targetGroup) {
     await chrome.tabGroups.update(targetGroup.id, { title: newTitle });
     return { success: true };
@@ -99,14 +74,11 @@ async function renameGroup(oldTitle, newTitle) {
 
 async function ungroupTabs(title) {
   const groups = await chrome.tabGroups.query({});
-  const targetGroup = groups.find(
-    (g) => g.title.toLowerCase() === title.toLowerCase()
-  );
+  const targetGroup = groups.find((g) => g.title.toLowerCase() === title.toLowerCase());
   if (targetGroup) {
     const tabs = await chrome.tabs.query({ groupId: targetGroup.id });
-    const tabIds = tabs.map((t) => t.id);
-    await chrome.tabs.ungroup(tabIds);
-    return { success: true, count: tabIds.length };
+    await chrome.tabs.ungroup(tabs.map((t) => t.id));
+    return { success: true, count: tabs.length };
   }
   return { success: false, error: "Group not found" };
 }
@@ -117,75 +89,50 @@ export default function App() {
   const [prompt, setPrompt] = useState("");
   const [aiStatus, setAiStatus] = useState("initializing");
   const [tabCount, setTabCount] = useState(0);
+  const [isDark, setIsDark] = useState(true);
   const sessionRef = useRef(null);
   const chatEndRef = useRef(null);
 
   useEffect(() => {
     initializeAI();
     updateTabCount();
+    const savedTheme = localStorage.getItem("tabManagerTheme");
+    if (savedTheme) setIsDark(savedTheme === "dark");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  useEffect(() => {
+    localStorage.setItem("tabManagerTheme", isDark ? "dark" : "light");
+  }, [isDark]);
+
   const initializeAI = async () => {
     try {
-      // Check if window.ai exists (Chrome built-in AI)
-      if (LanguageModel) {
+      if (typeof LanguageModel !== "undefined") {
         const availability = await LanguageModel.availability();
-
         if (availability === "available") {
           sessionRef.current = await LanguageModel.create({
-            systemPrompt: systemPrompt,
+            systemPrompt: `You are a Chrome Tab Manager AI. Analyze browser tabs and create logical groups.
+CRITICAL: Respond ONLY with valid JSON. No markdown, no explanations outside JSON.
+Format: {"groups": {"Group Name": [1,2,3]}, "explanation": "Brief explanation"}
+Rules: Tab IDs must be numbers, every tab in exactly one group, use clear names`,
           });
           setAiStatus("ready");
-          addMessage(
-            "🤖 AI ready! Ask me to organize tabs or type 'help'.",
-            "system"
-          );
-        } else if (availability.available === "after-download") {
-          setAiStatus("downloading");
-          addMessage(
-            "⏳ Downloading Gemini Nano... This may take a few minutes. Manual commands work now!",
-            "system"
-          );
+          addMessage("🤖 AI ready! Ask me to organize tabs or type 'help'.", "system");
         } else {
           setAiStatus("unavailable");
-          addMessage(
-            "ℹ️ To enable AI features:\n1. Use Chrome Canary/Dev (127+)\n2. Go to chrome://flags\n3. Enable 'Prompt API for Gemini Nano'\n4. Enable 'Optimization Guide On Device Model'\n5. Restart Chrome\n\nManual commands work now!",
-            "system"
-          );
-        }
-      } else if (typeof LanguageModel !== "undefined") {
-        // Fallback to older API
-        const availability = await LanguageModel.capabilities();
-
-        if (availability.available === "readily") {
-          sessionRef.current = await LanguageModel.create();
-          setAiStatus("ready");
-          addMessage("🤖 AI ready!", "system");
-        } else {
-          setAiStatus("unavailable");
-          addMessage(
-            "ℹ️ Enable AI in chrome://flags → Search 'Prompt API'\n\nManual commands work!",
-            "system"
-          );
+          addMessage("ℹ️ AI unavailable. Manual commands work perfectly!", "system");
         }
       } else {
         setAiStatus("unavailable");
-        addMessage(
-          "ℹ️ AI requires Chrome 127+ with flags enabled.\nManual commands work perfectly!",
-          "system"
-        );
+        addMessage("ℹ️ Manual commands available. Type 'help' to see options!", "system");
       }
     } catch (err) {
       setAiStatus("error");
-      addMessage(
-        "ℹ️ AI unavailable. Manual commands work!\n\nTry: 'group all as Work' or 'help'",
-        "system"
-      );
-      console.error("AI init error:", err);
+      addMessage("ℹ️ AI unavailable. Try: 'group all as Work' or 'help'", "system");
     }
   };
 
@@ -204,158 +151,84 @@ export default function App() {
 
   const getAllTabs = async () => {
     const tabs = await chrome.tabs.query({ currentWindow: true });
-    const groupableTabs = tabs.filter((tab) => {
-      const url = tab.url || "";
-      return (
-        !url.startsWith("chrome://") &&
-        !url.startsWith("chrome-extension://") &&
-        !url.startsWith("edge://") &&
-        !url.startsWith("about:")
-      );
-    });
-
-    return groupableTabs.map((tab) => ({
-      id: tab.id,
-      title: tab.title,
-      url: tab.url,
-    }));
+    return tabs
+      .filter((tab) => {
+        const url = tab.url || "";
+        return (
+          !url.startsWith("chrome://") &&
+          !url.startsWith("chrome-extension://") &&
+          !url.startsWith("edge://") &&
+          !url.startsWith("about:")
+        );
+      })
+      .map((tab) => ({ id: tab.id, title: tab.title, url: tab.url }));
   };
 
   const detectCommand = (text) => {
     const lower = text.toLowerCase();
-
-    if (lower === "help" || lower === "commands") {
-      return { type: "help" };
-    }
-
-    if (
-      lower.includes("list group") ||
-      lower.includes("show group") ||
-      lower === "groups"
-    ) {
+    if (lower === "help" || lower === "commands") return { type: "help" };
+    if (lower.includes("list group") || lower.includes("show group") || lower === "groups")
       return { type: "listGroups" };
+    if (lower.includes("rename") && (lower.includes("to") || lower.includes("as"))) {
+      const match = lower.match(/rename\s+(?:group\s+)?["']?(.+?)["']?\s+(?:to|as)\s+["']?(.+?)["']?$/);
+      if (match) return { type: "rename", oldTitle: match[1].trim(), newTitle: match[2].trim() };
     }
-
-    if (
-      lower.includes("rename") &&
-      (lower.includes("to") || lower.includes("as"))
-    ) {
-      const match = lower.match(
-        /rename\s+(?:group\s+)?["']?(.+?)["']?\s+(?:to|as)\s+["']?(.+?)["']?$/
-      );
-      if (match)
-        return {
-          type: "rename",
-          oldTitle: match[1].trim(),
-          newTitle: match[2].trim(),
-        };
-    }
-
     if (lower.includes("ungroup") || lower.includes("remove group")) {
       const match = lower.match(/(?:ungroup|remove group)\s+["']?(.+?)["']?$/);
       if (match) return { type: "ungroup", title: match[1].trim() };
     }
-
-    if (
-      (lower.includes("group all") || lower.includes("group everything")) &&
-      lower.includes("as")
-    ) {
-      const match = lower.match(
-        /(?:group all|group everything)\s+(?:as|under)\s+["']?(.+?)["']?$/
-      );
+    if ((lower.includes("group all") || lower.includes("group everything")) && lower.includes("as")) {
+      const match = lower.match(/(?:group all|group everything)\s+(?:as|under)\s+["']?(.+?)["']?$/);
       if (match) return { type: "groupAll", title: match[1].trim() };
     }
-
     if (
       lower.includes("group") ||
       lower.includes("organize") ||
       lower.includes("categorize") ||
       lower.includes("sort") ||
       lower.includes("arrange")
-    ) {
+    )
       return { type: "organize" };
-    }
-
     return { type: "chat" };
   };
 
   const askAIToGroupTabs = async (tabs, userRequest) => {
-    if (!sessionRef.current) {
-      throw new Error("AI session not available");
-    }
-
+    if (!sessionRef.current) throw new Error("AI session not available");
     const tabsList = tabs
       .map(
         (tab) => `Tab ${tab.id}: "${tab.title}" - ${new URL(tab.url).hostname}`
       )
       .join("\n");
-
-    const prompt = `Analyze ${tabs.length} tabs and group them logically.
-
-Tabs:
-${tabsList}
-
+    const response = await sessionRef.current.prompt(`Analyze ${tabs.length} tabs and group them logically.
+Tabs: ${tabsList}
 User wants: "${userRequest}"
-
-Respond with ONLY this JSON format (no markdown, no code blocks):
-{
-  "groups": {
-    "Group Name": [${tabs
-      .slice(0, 3)
-      .map((t) => t.id)
-      .join(", ")}]
-  },
-  "explanation": "Why grouped this way"
-}
-
-All tab IDs: ${tabs.map((t) => t.id).join(", ")}
-Include ALL tab IDs exactly once.`;
-
-    const response = await sessionRef.current.prompt(prompt);
+Respond with ONLY JSON: {"groups": {"Name": [ids]}, "explanation": "text"}
+All IDs: ${tabs.map((t) => t.id).join(", ")}`);
     return parseAIResponse(response, tabs);
   };
 
   const parseAIResponse = (response, tabs) => {
     try {
-      // Remove markdown code blocks if present
       let cleaned = response.replace(/```json\s*/g, "").replace(/```\s*/g, "");
-
-      // Try to extract JSON
       const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error("No JSON found in AI response");
-      }
-
+      if (!jsonMatch) throw new Error("No JSON found");
       const data = JSON.parse(jsonMatch[0]);
-
-      if (!data.groups || typeof data.groups !== "object") {
-        throw new Error("Invalid groups format");
-      }
-
-      // Ensure all IDs are numbers
+      if (!data.groups) throw new Error("Invalid format");
       const normalizedGroups = {};
-      for (const [groupName, ids] of Object.entries(data.groups)) {
-        normalizedGroups[groupName] = ids
+      for (const [name, ids] of Object.entries(data.groups)) {
+        normalizedGroups[name] = ids
           .map((id) => (typeof id === "number" ? id : parseInt(id, 10)))
           .filter((id) => !isNaN(id));
       }
-
-      return {
-        groups: normalizedGroups,
-        explanation: data.explanation || "AI-generated grouping",
-        valid: true,
-      };
+      return { groups: normalizedGroups, explanation: data.explanation || "AI-generated", valid: true };
     } catch (err) {
-      console.error("Failed to parse AI response:", err);
-      console.log("Raw response:", response);
-      return { valid: false, error: `Parse error: ${err.message}` };
+      return { valid: false, error: err.message };
     }
   };
 
   const handleSend = async () => {
     const text = prompt.trim();
     if (!text || loading) return;
-
     addMessage(text, "user");
     setPrompt("");
     setLoading(true);
@@ -368,20 +241,18 @@ Include ALL tab IDs exactly once.`;
         addMessage(
           `📚 Available Commands:
 
-🤖 AI Commands (when AI is ready):
+🤖 AI Commands:
 • "organize my tabs"
 • "group tabs by topic"
-• "sort my tabs intelligently"
 
-🔧 Manual Commands (always work):
-• "group all as [name]" - Group everything
-• "rename [old] to [new]" - Rename group
-• "ungroup [name]" - Remove group
-• "list groups" - Show all groups
+🔧 Manual Commands:
+• "group all as [name]"
+• "rename [old] to [new]"
+• "ungroup [name]"
+• "list groups"
 
 💡 Examples:
 • "group all as Work"
-• "rename Social to Personal"
 • "list groups"`,
           "bot"
         );
@@ -391,18 +262,16 @@ Include ALL tab IDs exactly once.`;
       if (command.type === "listGroups") {
         const groups = await chrome.tabGroups.query({});
         setLoading(false);
-
         if (groups.length === 0) {
-          addMessage("📋 No tab groups yet. Create some!", "bot");
+          addMessage("📋 No groups yet. Create some!", "bot");
         } else {
-          const groupList = await Promise.all(
-            groups.map(async (group) => {
-              const tabs = await chrome.tabs.query({ groupId: group.id });
-              return `📁 ${group.title || "Untitled"} (${tabs.length} tabs)`;
+          const list = await Promise.all(
+            groups.map(async (g) => {
+              const tabs = await chrome.tabs.query({ groupId: g.id });
+              return `📁 ${g.title || "Untitled"} (${tabs.length} tabs)`;
             })
           );
-
-          addMessage(`📋 Current Groups:\n\n${groupList.join("\n")}`, "bot");
+          addMessage(`📋 Current Groups:\n\n${list.join("\n")}`, "bot");
         }
         return;
       }
@@ -410,28 +279,22 @@ Include ALL tab IDs exactly once.`;
       if (command.type === "rename") {
         const result = await renameGroup(command.oldTitle, command.newTitle);
         setLoading(false);
-        if (result.success) {
-          addMessage(
-            `✅ Renamed "${command.oldTitle}" → "${command.newTitle}"`,
-            "bot"
-          );
-        } else {
-          addMessage(`❌ Group "${command.oldTitle}" not found`, "bot");
-        }
+        addMessage(
+          result.success
+            ? `✅ Renamed "${command.oldTitle}" → "${command.newTitle}"`
+            : `❌ Group "${command.oldTitle}" not found`,
+          "bot"
+        );
         return;
       }
 
       if (command.type === "ungroup") {
         const result = await ungroupTabs(command.title);
         setLoading(false);
-        if (result.success) {
-          addMessage(
-            `✅ Ungrouped ${result.count} tabs from "${command.title}"`,
-            "bot"
-          );
-        } else {
-          addMessage(`❌ Group "${command.title}" not found`, "bot");
-        }
+        addMessage(
+          result.success ? `✅ Ungrouped ${result.count} tabs from "${command.title}"` : `❌ Group "${command.title}" not found`,
+          "bot"
+        );
         await updateTabCount();
         return;
       }
@@ -439,57 +302,39 @@ Include ALL tab IDs exactly once.`;
       if (command.type === "groupAll") {
         const result = await groupExistingTabs(command.title);
         setLoading(false);
-        if (result.success) {
-          addMessage(
-            `✅ Grouped ${result.count} tabs under "${command.title}"`,
-            "bot"
-          );
-        } else {
-          addMessage(`❌ ${result.error}`, "bot");
-        }
+        addMessage(
+          result.success ? `✅ Grouped ${result.count} tabs under "${command.title}"` : `❌ ${result.error}`,
+          "bot"
+        );
         await updateTabCount();
         return;
       }
 
       if (command.type === "organize") {
         const tabs = await getAllTabs();
-
         if (tabs.length === 0) {
           setLoading(false);
           addMessage("⚠️ No groupable tabs. Open some webpages first!", "bot");
           return;
         }
-
         if (!sessionRef.current || aiStatus !== "ready") {
           setLoading(false);
-          addMessage(
-            `⚠️ AI not available. Try manual command:\n"group all as [name]"`,
-            "bot"
-          );
+          addMessage(`⚠️ AI not available. Try: "group all as [name]"`, "bot");
           return;
         }
-
         addMessage("🤖 AI analyzing tabs...", "system");
-
         const aiResult = await askAIToGroupTabs(tabs, text);
-
         if (!aiResult.valid) {
           setLoading(false);
           addMessage(`❌ AI error: ${aiResult.error}`, "bot");
           return;
         }
-
         addMessage(`💡 ${aiResult.explanation}`, "bot");
-
         const result = await createMultipleGroups(aiResult.groups);
-
         setLoading(false);
-
         if (result.success) {
-          const summary = result.groups.map((name) => `• ${name}`).join("\n");
-
           addMessage(
-            `✅ Created ${result.groupsCreated} groups!\n\n${summary}`,
+            `✅ Created ${result.groupsCreated} groups!\n\n${result.groups.map((n) => `• ${n}`).join("\n")}`,
             "bot"
           );
           await updateTabCount();
@@ -499,57 +344,44 @@ Include ALL tab IDs exactly once.`;
         return;
       }
 
-      // Chat mode
       if (sessionRef.current) {
         const response = await sessionRef.current.prompt(text);
         setLoading(false);
         addMessage(response, "bot");
       } else {
         setLoading(false);
-        addMessage("Try: 'group all as Work' or 'list groups'", "bot");
+        addMessage("Try: 'group all as Work' or 'help'", "bot");
       }
     } catch (err) {
       setLoading(false);
       addMessage(`❌ Error: ${err.message}`, "bot");
-      console.error(err);
     }
   };
 
   const quickOrganize = async () => {
     if (aiStatus !== "ready") {
-      addMessage("⚠️ AI not ready. Use manual commands instead!", "bot");
+      addMessage("⚠️ AI not ready. Use manual commands!", "bot");
       return;
     }
-
     setLoading(true);
-    addMessage("⚡ Quick organize starting...", "system");
-
     try {
       const tabs = await getAllTabs();
-
       if (tabs.length === 0) {
         addMessage("⚠️ No groupable tabs!", "bot");
         setLoading(false);
         return;
       }
-
       const aiResult = await askAIToGroupTabs(tabs, "organize intelligently");
-
       if (!aiResult.valid) {
         setLoading(false);
         addMessage(`❌ Error: ${aiResult.error}`, "bot");
         return;
       }
-
       const result = await createMultipleGroups(aiResult.groups);
-
       setLoading(false);
-
       if (result.success) {
         addMessage(`✅ Organized into ${result.groupsCreated} groups!`, "bot");
         await updateTabCount();
-      } else {
-        addMessage(`❌ Error: ${result.error}`, "bot");
       }
     } catch (err) {
       setLoading(false);
@@ -557,329 +389,296 @@ Include ALL tab IDs exactly once.`;
     }
   };
 
-  const handleReset = () => {
-    setMessages([]);
-    addMessage("🔄 Chat cleared!", "system");
-  };
-
-  const getStatusColor = () => {
-    switch (aiStatus) {
-      case "ready":
-        return "#10b981";
-      case "downloading":
-        return "#3b82f6";
-      case "unavailable":
-        return "#f59e0b";
-      default:
-        return "#6b7280";
-    }
-  };
-
-  const getStatusText = () => {
-    switch (aiStatus) {
-      case "ready":
-        return `${tabCount} tabs • AI Ready ✓`;
-      case "downloading":
-        return `${tabCount} tabs • AI Downloading...`;
-      case "unavailable":
-        return `${tabCount} tabs • Manual Mode`;
-      case "initializing":
-        return `${tabCount} tabs • Starting...`;
-      default:
-        return `${tabCount} tabs • Manual Mode`;
-    }
-  };
-
-  const quickActions = [
-    {
-      label: "📋 Groups",
-      action: () => setPrompt("list groups"),
-    },
-    {
-      label: "❓ Help",
-      action: () => setPrompt("help"),
-    },
-    {
-      label: "🔧 Enable AI",
-      action: () =>
-        addMessage(
-          "🚀 How to Enable Gemini Nano AI:\n\n1. Use Chrome Dev/Canary (127+)\n   Download: chrome.com/dev\n\n2. Enable flags:\n   • chrome://flags/#prompt-api-for-gemini-nano\n   • chrome://flags/#optimization-guide-on-device-model\n   Set both to 'Enabled'\n\n3. Restart Chrome\n\n4. AI will download automatically\n\n5. Reload this extension\n\nNote: Manual commands work without AI!",
-          "bot"
-        ),
-      show: aiStatus !== "ready",
-    },
-  ];
-
   return (
     <div
-      style={{
-        width: 380,
-        height: 580,
-        background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-        fontFamily: "'Inter', system-ui, sans-serif",
-        display: "flex",
-        flexDirection: "column",
-        borderRadius: 16,
-        overflow: "hidden",
-        boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
-      }}
+      className={`w-[400px] h-[600px] ${
+        isDark
+          ? "bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900"
+          : "bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50"
+      } font-sans flex flex-col transition-all duration-500`}
     >
       {/* Header */}
       <div
-        style={{
-          background: "rgba(255,255,255,0.15)",
-          backdropFilter: "blur(10px)",
-          padding: "16px 20px",
-          borderBottom: "1px solid rgba(255,255,255,0.2)",
-        }}
+        className={`relative px-6 py-4 ${
+          isDark
+            ? "bg-gradient-to-r from-purple-900/40 to-indigo-900/40 backdrop-blur-xl border-b border-white/10"
+            : "bg-white/60 backdrop-blur-xl border-b border-indigo-200/50"
+        }`}
       >
+        {/* Decorative gradient orb */}
         <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            marginBottom: 8,
-          }}
-        >
-          <div style={{ fontSize: 24 }}>🤖</div>
-          <div style={{ flex: 1 }}>
-            <h3
-              style={{
-                margin: 0,
-                fontSize: 16,
-                color: "#fff",
-                fontWeight: 700,
-              }}
-            >
-              AI Tab Manager
-            </h3>
+          className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full blur-3xl opacity-20 pointer-events-none"
+        ></div>
+
+        <div className="relative flex items-start justify-between mb-4">
+          <div className="flex items-center gap-3">
             <div
+              className="w-11 h-11 rounded-2xl flex items-center justify-center text-2xl shadow-lg transform hover:scale-105 transition-transform"
               style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                marginTop: 4,
+                background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
               }}
             >
-              <div
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: "50%",
-                  background: getStatusColor(),
-                  boxShadow: `0 0 8px ${getStatusColor()}`,
-                }}
-              />
-              <span style={{ fontSize: 11, color: "rgba(255,255,255,0.9)" }}>
-                {getStatusText()}
-              </span>
+              🤖
+            </div>
+            <div>
+              <h3
+                className={`text-lg font-bold tracking-tight ${
+                  isDark ? "text-white" : "text-slate-900"
+                }`}
+              >
+                AI Tab Manager
+              </h3>
+              <div className="flex items-center gap-2 mt-0.5">
+                <div
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    aiStatus === "ready"
+                      ? "bg-emerald-400 animate-pulse shadow-lg shadow-emerald-400/50"
+                      : "bg-slate-400"
+                  }`}
+                ></div>
+                <span
+                  className={`text-xs font-medium ${
+                    isDark ? "text-slate-300" : "text-slate-600"
+                  }`}
+                >
+                  {tabCount} tabs • {aiStatus === "ready" ? "AI Active" : "Manual"}
+                </span>
+              </div>
             </div>
           </div>
+
           <button
-            onClick={handleReset}
-            style={{
-              padding: "6px 12px",
-              fontSize: 11,
-              border: "1px solid rgba(255,255,255,0.3)",
-              background: "rgba(255,255,255,0.1)",
-              color: "#fff",
-              borderRadius: 6,
-              cursor: "pointer",
-              fontWeight: 600,
-            }}
+            onClick={() => setIsDark(!isDark)}
+            className={`p-2.5 rounded-xl transition-all hover:scale-110 ${
+              isDark
+                ? "bg-white/10 hover:bg-white/20 text-yellow-300"
+                : "bg-slate-200/50 hover:bg-slate-300/50 text-slate-700"
+            }`}
+            title="Toggle theme"
           >
-            Clear
+            {isDark ? "☀️" : "🌙"}
+          </button>
+        </div>
+
+        {/* Quick Actions */}
+        <div className="relative flex gap-2">
+          <button
+            onClick={() => setPrompt("list groups")}
+            disabled={loading}
+            className={`flex-1 px-3 py-2 text-xs font-semibold rounded-xl transition-all ${
+              isDark
+                ? "bg-white/10 hover:bg-white/20 text-white border border-white/20"
+                : "bg-white/80 hover:bg-white text-slate-700 border border-indigo-200"
+            } ${
+              loading ? "opacity-50 cursor-not-allowed" : "hover:shadow-md"
+            }`}
+          >
+            📋 Groups
+          </button>
+          <button
+            onClick={() => setPrompt("help")}
+            disabled={loading}
+            className={`flex-1 px-3 py-2 text-xs font-semibold rounded-xl transition-all ${
+              isDark
+                ? "bg-white/10 hover:bg-white/20 text-white border border-white/20"
+                : "bg-white/80 hover:bg-white text-slate-700 border border-indigo-200"
+            } ${
+              loading ? "opacity-50 cursor-not-allowed" : "hover:shadow-md"
+            }`}
+          >
+            ❓ Help
+          </button>
+          <button
+            onClick={quickOrganize}
+            disabled={loading || aiStatus !== "ready"}
+            className={`flex-1 px-3 py-2 text-xs font-bold rounded-xl transition-all ${
+              loading || aiStatus !== "ready"
+                ? "bg-slate-400/30 cursor-not-allowed text-slate-500"
+                : "bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white shadow-lg hover:shadow-xl hover:scale-105"
+            }`}
+          >
+            ⚡ AI Sort
           </button>
         </div>
       </div>
 
-      {/* Quick Actions */}
-      <div
-        style={{
-          padding: "12px 16px",
-          background: "rgba(0,0,0,0.1)",
-          display: "flex",
-          gap: 8,
-          overflowX: "auto",
-        }}
-      >
-        {quickActions
-          .filter((qa) => qa.show !== false)
-          .map((qa, i) => (
-            <button
-              key={i}
-              onClick={qa.action}
-              disabled={loading}
-              style={{
-                padding: "6px 12px",
-                fontSize: 11,
-                border: "1px solid rgba(255,255,255,0.3)",
-                background: "rgba(255,255,255,0.15)",
-                color: "#fff",
-                borderRadius: 20,
-                cursor: loading ? "not-allowed" : "pointer",
-                whiteSpace: "nowrap",
-                fontWeight: 500,
-              }}
-            >
-              {qa.label}
-            </button>
-          ))}
-        <button
-          onClick={quickOrganize}
-          disabled={loading || aiStatus !== "ready"}
-          style={{
-            padding: "6px 12px",
-            fontSize: 11,
-            border: "none",
-            background:
-              loading || aiStatus !== "ready"
-                ? "rgba(255,255,255,0.3)"
-                : "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)",
-            color: "#fff",
-            borderRadius: 20,
-            cursor: loading || aiStatus !== "ready" ? "not-allowed" : "pointer",
-            whiteSpace: "nowrap",
-            fontWeight: 600,
-            boxShadow:
-              !loading && aiStatus === "ready"
-                ? "0 4px 12px rgba(245,87,108,0.4)"
-                : "none",
-          }}
-        >
-          ⚡ Quick AI
-        </button>
-      </div>
-
       {/* Chat Area */}
       <div
-        style={{
-          flex: 1,
-          overflowY: "auto",
-          padding: 16,
-          display: "flex",
-          flexDirection: "column",
-          gap: 12,
-        }}
+        className={`flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-3 ${
+          isDark ? "bg-slate-900/30" : "bg-white/30"
+        }`}
       >
-        {messages.map((msg, i) => (
-          <div
-            key={i}
-            style={{
-              display: "flex",
-              justifyContent: msg.sender === "user" ? "flex-end" : "flex-start",
-            }}
-          >
-            <div
-              style={{
-                padding: "10px 14px",
-                borderRadius:
-                  msg.sender === "user"
-                    ? "16px 16px 4px 16px"
-                    : "16px 16px 16px 4px",
-                maxWidth: "80%",
-                background:
-                  msg.sender === "user"
-                    ? "rgba(255,255,255,0.95)"
-                    : msg.sender === "system"
-                    ? "rgba(0,0,0,0.2)"
-                    : "rgba(255,255,255,0.85)",
-                color:
-                  msg.sender === "user"
-                    ? "#1f2937"
-                    : msg.sender === "system"
-                    ? "#fff"
-                    : "#1f2937",
-                fontSize: 13,
-                lineHeight: 1.5,
-                whiteSpace: "pre-wrap",
-                backdropFilter: "blur(10px)",
-                boxShadow:
-                  msg.sender === "user"
-                    ? "0 4px 12px rgba(0,0,0,0.15)"
-                    : "0 2px 8px rgba(0,0,0,0.1)",
-                fontWeight: msg.sender === "system" ? 500 : 400,
-              }}
-            >
-              {msg.text}
+        {messages.map((msg, i) => {
+          const isUser = msg.sender === "user";
+          const isSystem = msg.sender === "system";
+
+          if (isUser) {
+            return (
+              <div key={i} className="flex justify-end animate-slide-in-right">
+                <div
+                  className="max-w-[80%] px-4 py-2.5 rounded-2xl rounded-tr-md bg-gradient-to-br from-purple-500 to-indigo-600 text-white shadow-lg text-sm leading-relaxed"
+                  style={{ wordWrap: "break-word" }}
+                >
+                  {msg.text}
+                </div>
+              </div>
+            );
+          }
+
+          if (isSystem) {
+            return (
+              <div key={i} className="flex justify-center animate-fade-in">
+                <div
+                  className={`px-4 py-2 rounded-full text-xs font-medium ${
+                    isDark
+                      ? "bg-indigo-500/20 text-indigo-200 border border-indigo-500/30"
+                      : "bg-indigo-100 text-indigo-700 border border-indigo-200"
+                  }`}
+                >
+                  {msg.text}
+                </div>
+              </div>
+            );
+          }
+
+          return (
+            <div key={i} className="flex justify-start animate-slide-in-left">
+              <div
+                className={`max-w-[85%] px-4 py-2.5 rounded-2xl rounded-tl-md shadow-md text-sm leading-relaxed ${
+                  isDark
+                    ? "bg-slate-800/80 text-slate-100 border border-slate-700/50"
+                    : "bg-white text-slate-800 border border-slate-200"
+                }`}
+                style={{ wordWrap: "break-word", whiteSpace: "pre-wrap" }}
+              >
+                {msg.text}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
+
         {loading && (
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "flex-start",
-            }}
-          >
+          <div className="flex justify-start animate-pulse">
             <div
-              style={{
-                padding: "10px 14px",
-                borderRadius: "16px 16px 16px 4px",
-                background: "rgba(255,255,255,0.85)",
-                color: "#6b7280",
-                fontSize: 13,
-              }}
+              className={`px-4 py-2.5 rounded-2xl rounded-tl-md flex items-center gap-2 text-sm ${
+                isDark
+                  ? "bg-slate-800/80 text-slate-300 border border-slate-700/50"
+                  : "bg-white text-slate-600 border border-slate-200"
+              }`}
             >
-              🤔 Thinking...
+              <div className="flex gap-1">
+                <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce"></div>
+                <div
+                  className="w-2 h-2 bg-indigo-500 rounded-full animate-bounce"
+                  style={{ animationDelay: "0.1s" }}
+                ></div>
+                <div
+                  className="w-2 h-2 bg-pink-500 rounded-full animate-bounce"
+                  style={{ animationDelay: "0.2s" }}
+                ></div>
+              </div>
+              <span>Thinking...</span>
             </div>
           </div>
         )}
+
         <div ref={chatEndRef} />
       </div>
 
       {/* Input Area */}
       <div
-        style={{
-          padding: 16,
-          background: "rgba(0,0,0,0.15)",
-          backdropFilter: "blur(10px)",
-          borderTop: "1px solid rgba(255,255,255,0.1)",
-        }}
+        className={`px-6 py-4 ${
+          isDark
+            ? "bg-gradient-to-r from-purple-900/40 to-indigo-900/40 backdrop-blur-xl border-t border-white/10"
+            : "bg-white/60 backdrop-blur-xl border-t border-indigo-200/50"
+        }`}
       >
-        <div style={{ display: "flex", gap: 8 }}>
+        <div className="flex gap-2">
           <input
             type="text"
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && !loading && handleSend()}
-            placeholder="Try: 'group all as Work' or 'help'"
+            placeholder="Ask me to organize your tabs..."
             disabled={loading}
-            style={{
-              flex: 1,
-              padding: "12px 16px",
-              borderRadius: 24,
-              border: "none",
-              background: "rgba(255,255,255,0.95)",
-              fontSize: 13,
-              outline: "none",
-            }}
+            className={`flex-1 px-4 py-3 rounded-xl text-sm transition-all focus:outline-none focus:ring-2 ${
+              isDark
+                ? "bg-slate-800/50 border border-slate-700 text-white placeholder-slate-400 focus:ring-purple-500/50 focus:border-purple-500/50"
+                : "bg-white border border-slate-300 text-slate-900 placeholder-slate-400 focus:ring-indigo-500/50 focus:border-indigo-500"
+            } ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
           />
           <button
             onClick={handleSend}
             disabled={loading || !prompt.trim()}
-            style={{
-              padding: "12px 20px",
-              border: "none",
-              background:
-                loading || !prompt.trim()
-                  ? "rgba(255,255,255,0.3)"
-                  : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-              color: "white",
-              borderRadius: 24,
-              cursor: loading || !prompt.trim() ? "not-allowed" : "pointer",
-              fontSize: 20,
-              fontWeight: 600,
-              boxShadow:
-                !loading && prompt.trim()
-                  ? "0 4px 12px rgba(102,126,234,0.4)"
-                  : "none",
-            }}
+            className={`px-5 py-3 rounded-xl font-semibold transition-all ${
+              loading || !prompt.trim()
+                ? "bg-slate-400/30 text-slate-500 cursor-not-allowed"
+                : "bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white shadow-lg hover:shadow-xl hover:scale-105"
+            }`}
+            title="Send message"
           >
-            ✨
+            <span className="text-lg">✨</span>
           </button>
         </div>
       </div>
+
+      {/* Custom Styles */}
+      <style>{`
+        @keyframes slide-in-right {
+          from {
+            opacity: 0;
+            transform: translateX(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+        @keyframes slide-in-left {
+          from {
+            opacity: 0;
+            transform: translateX(-20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+        @keyframes fade-in {
+          from {
+            opacity: 0;
+            transform: scale(0.95);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+        .animate-slide-in-right {
+          animation: slide-in-right 0.3s ease-out;
+        }
+        .animate-slide-in-left {
+          animation: slide-in-left 0.3s ease-out;
+        }
+        .animate-fade-in {
+          animation: fade-in 0.3s ease-out;
+        }
+
+        /* Custom Scrollbar */
+        .overflow-y-auto::-webkit-scrollbar {
+          width: 6px;
+        }
+        .overflow-y-auto::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .overflow-y-auto::-webkit-scrollbar-thumb {
+          background: ${isDark ? "rgba(139, 92, 246, 0.3)" : "rgba(99, 102, 241, 0.3)"};
+          border-radius: 10px;
+        }
+        .overflow-y-auto::-webkit-scrollbar-thumb:hover {
+          background: ${isDark ? "rgba(139, 92, 246, 0.5)" : "rgba(99, 102, 241, 0.5)"};
+        }
+      `}</style>
     </div>
   );
 }

@@ -1,14 +1,15 @@
 import { useState, useRef, useEffect } from "react";
+import { systemPrompt } from "../utils";
 
 // Validate and sanitize tab IDs
 async function validateTabIds(tabIds) {
   const allTabs = await chrome.tabs.query({ currentWindow: true });
-  const validTabIds = allTabs.map(t => t.id);
-  
+  const validTabIds = allTabs.map((t) => t.id);
+
   // Convert to numbers and filter only valid, existing tabs
   return tabIds
-    .map(id => typeof id === 'number' ? id : parseInt(id, 10))
-    .filter(id => !isNaN(id) && validTabIds.includes(id));
+    .map((id) => (typeof id === "number" ? id : parseInt(id, 10)))
+    .filter((id) => !isNaN(id) && validTabIds.includes(id));
 }
 
 // Create multiple groups using Chrome API
@@ -31,7 +32,7 @@ async function createMultipleGroups(groupedTabs) {
       if (tabIds.length > 0) {
         // Validate tab IDs before grouping
         const validIds = await validateTabIds(tabIds);
-        
+
         if (validIds.length === 0) {
           console.warn(`No valid tabs for group: ${groupName}`);
           continue;
@@ -39,22 +40,22 @@ async function createMultipleGroups(groupedTabs) {
 
         // Create the group
         const groupId = await chrome.tabs.group({ tabIds: validIds });
-        
+
         // Set group title and color
         await chrome.tabGroups.update(groupId, {
           title: groupName,
           color: colors[colorIndex % colors.length],
         });
-        
+
         successfulGroups.push(groupName);
         colorIndex++;
       }
     }
 
-    return { 
-      success: true, 
+    return {
+      success: true,
       groupsCreated: successfulGroups.length,
-      groups: successfulGroups
+      groups: successfulGroups,
     };
   } catch (error) {
     console.error("Error creating groups:", error);
@@ -73,11 +74,11 @@ async function groupExistingTabs(title, color = "blue") {
       !url.startsWith("about:")
     );
   });
-  
+
   if (groupableTabs.length === 0) {
     return { success: false, error: "No groupable tabs found" };
   }
-  
+
   const tabIds = groupableTabs.map((t) => t.id);
   const groupId = await chrome.tabs.group({ tabIds });
   await chrome.tabGroups.update(groupId, { title, color });
@@ -132,27 +133,11 @@ export default function App() {
     try {
       // Check if window.ai exists (Chrome built-in AI)
       if (LanguageModel) {
-        const availability = await LanguageModel.availability();;
-        
+        const availability = await LanguageModel.availability();
+
         if (availability === "available") {
           sessionRef.current = await LanguageModel.create({
-            systemPrompt: `You are a Chrome Tab Manager AI. Analyze browser tabs and create logical groups.
-
-CRITICAL: Respond ONLY with valid JSON. No markdown, no explanations outside JSON.
-
-Format:
-{
-  "groups": {
-    "Group Name 1": [1, 2, 3],
-    "Group Name 2": [4, 5]
-  },
-  "explanation": "Brief explanation"
-}
-
-Rules:
-- Tab IDs must be numbers
-- Every tab must be in exactly one group
-- Use clear, descriptive group names`
+            systemPrompt: systemPrompt,
           });
           setAiStatus("ready");
           addMessage(
@@ -172,10 +157,10 @@ Rules:
             "system"
           );
         }
-      } else if (typeof LanguageModel !== 'undefined') {
+      } else if (typeof LanguageModel !== "undefined") {
         // Fallback to older API
         const availability = await LanguageModel.capabilities();
-        
+
         if (availability.available === "readily") {
           sessionRef.current = await LanguageModel.create();
           setAiStatus("ready");
@@ -300,7 +285,9 @@ Rules:
     }
 
     const tabsList = tabs
-      .map((tab) => `Tab ${tab.id}: "${tab.title}" - ${new URL(tab.url).hostname}`)
+      .map(
+        (tab) => `Tab ${tab.id}: "${tab.title}" - ${new URL(tab.url).hostname}`
+      )
       .join("\n");
 
     const prompt = `Analyze ${tabs.length} tabs and group them logically.
@@ -313,12 +300,15 @@ User wants: "${userRequest}"
 Respond with ONLY this JSON format (no markdown, no code blocks):
 {
   "groups": {
-    "Group Name": [${tabs.slice(0, 3).map(t => t.id).join(', ')}]
+    "Group Name": [${tabs
+      .slice(0, 3)
+      .map((t) => t.id)
+      .join(", ")}]
   },
   "explanation": "Why grouped this way"
 }
 
-All tab IDs: ${tabs.map(t => t.id).join(', ')}
+All tab IDs: ${tabs.map((t) => t.id).join(", ")}
 Include ALL tab IDs exactly once.`;
 
     const response = await sessionRef.current.prompt(prompt);
@@ -328,8 +318,8 @@ Include ALL tab IDs exactly once.`;
   const parseAIResponse = (response, tabs) => {
     try {
       // Remove markdown code blocks if present
-      let cleaned = response.replace(/```json\s*/g, '').replace(/```\s*/g, '');
-      
+      let cleaned = response.replace(/```json\s*/g, "").replace(/```\s*/g, "");
+
       // Try to extract JSON
       const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
@@ -345,9 +335,9 @@ Include ALL tab IDs exactly once.`;
       // Ensure all IDs are numbers
       const normalizedGroups = {};
       for (const [groupName, ids] of Object.entries(data.groups)) {
-        normalizedGroups[groupName] = ids.map(id => 
-          typeof id === 'number' ? id : parseInt(id, 10)
-        ).filter(id => !isNaN(id));
+        normalizedGroups[groupName] = ids
+          .map((id) => (typeof id === "number" ? id : parseInt(id, 10)))
+          .filter((id) => !isNaN(id));
       }
 
       return {
@@ -466,10 +456,7 @@ Include ALL tab IDs exactly once.`;
 
         if (tabs.length === 0) {
           setLoading(false);
-          addMessage(
-            "⚠️ No groupable tabs. Open some webpages first!",
-            "bot"
-          );
+          addMessage("⚠️ No groupable tabs. Open some webpages first!", "bot");
           return;
         }
 
@@ -497,11 +484,9 @@ Include ALL tab IDs exactly once.`;
         const result = await createMultipleGroups(aiResult.groups);
 
         setLoading(false);
-        
+
         if (result.success) {
-          const summary = result.groups
-            .map((name) => `• ${name}`)
-            .join("\n");
+          const summary = result.groups.map((name) => `• ${name}`).join("\n");
 
           addMessage(
             `✅ Created ${result.groupsCreated} groups!\n\n${summary}`,
@@ -521,10 +506,7 @@ Include ALL tab IDs exactly once.`;
         addMessage(response, "bot");
       } else {
         setLoading(false);
-        addMessage(
-          "Try: 'group all as Work' or 'list groups'",
-          "bot"
-        );
+        addMessage("Try: 'group all as Work' or 'list groups'", "bot");
       }
     } catch (err) {
       setLoading(false);
@@ -562,12 +544,9 @@ Include ALL tab IDs exactly once.`;
       const result = await createMultipleGroups(aiResult.groups);
 
       setLoading(false);
-      
+
       if (result.success) {
-        addMessage(
-          `✅ Organized into ${result.groupsCreated} groups!`,
-          "bot"
-        );
+        addMessage(`✅ Organized into ${result.groupsCreated} groups!`, "bot");
         await updateTabCount();
       } else {
         addMessage(`❌ Error: ${result.error}`, "bot");
@@ -622,11 +601,12 @@ Include ALL tab IDs exactly once.`;
     },
     {
       label: "🔧 Enable AI",
-      action: () => addMessage(
-        "🚀 How to Enable Gemini Nano AI:\n\n1. Use Chrome Dev/Canary (127+)\n   Download: chrome.com/dev\n\n2. Enable flags:\n   • chrome://flags/#prompt-api-for-gemini-nano\n   • chrome://flags/#optimization-guide-on-device-model\n   Set both to 'Enabled'\n\n3. Restart Chrome\n\n4. AI will download automatically\n\n5. Reload this extension\n\nNote: Manual commands work without AI!",
-        "bot"
-      ),
-      show: aiStatus !== "ready"
+      action: () =>
+        addMessage(
+          "🚀 How to Enable Gemini Nano AI:\n\n1. Use Chrome Dev/Canary (127+)\n   Download: chrome.com/dev\n\n2. Enable flags:\n   • chrome://flags/#prompt-api-for-gemini-nano\n   • chrome://flags/#optimization-guide-on-device-model\n   Set both to 'Enabled'\n\n3. Restart Chrome\n\n4. AI will download automatically\n\n5. Reload this extension\n\nNote: Manual commands work without AI!",
+          "bot"
+        ),
+      show: aiStatus !== "ready",
     },
   ];
 
@@ -723,26 +703,28 @@ Include ALL tab IDs exactly once.`;
           overflowX: "auto",
         }}
       >
-        {quickActions.filter(qa => qa.show !== false).map((qa, i) => (
-          <button
-            key={i}
-            onClick={qa.action}
-            disabled={loading}
-            style={{
-              padding: "6px 12px",
-              fontSize: 11,
-              border: "1px solid rgba(255,255,255,0.3)",
-              background: "rgba(255,255,255,0.15)",
-              color: "#fff",
-              borderRadius: 20,
-              cursor: loading ? "not-allowed" : "pointer",
-              whiteSpace: "nowrap",
-              fontWeight: 500,
-            }}
-          >
-            {qa.label}
-          </button>
-        ))}
+        {quickActions
+          .filter((qa) => qa.show !== false)
+          .map((qa, i) => (
+            <button
+              key={i}
+              onClick={qa.action}
+              disabled={loading}
+              style={{
+                padding: "6px 12px",
+                fontSize: 11,
+                border: "1px solid rgba(255,255,255,0.3)",
+                background: "rgba(255,255,255,0.15)",
+                color: "#fff",
+                borderRadius: 20,
+                cursor: loading ? "not-allowed" : "pointer",
+                whiteSpace: "nowrap",
+                fontWeight: 500,
+              }}
+            >
+              {qa.label}
+            </button>
+          ))}
         <button
           onClick={quickOrganize}
           disabled={loading || aiStatus !== "ready"}

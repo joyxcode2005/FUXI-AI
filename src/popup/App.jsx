@@ -34,6 +34,7 @@ export default function App() {
   const [newGroupName, setNewGroupName] = useState("");
   const sessionRef = useRef(null);
   const chatEndRef = useRef(null);
+  const hasAutoOrganized = useRef(false);
 
   useEffect(() => {
     initializeAI();
@@ -42,6 +43,18 @@ export default function App() {
     if (savedTheme) setIsDark(savedTheme === "dark");
   }, []);
 
+  // Separate useEffect to trigger auto-organize when AI becomes ready
+  useEffect(() => {
+    if (aiStatus === "ready" && !hasAutoOrganized.current) {
+      hasAutoOrganized.current = true;
+      // const timer = setTimeout(() => {
+      //   quickOrganize();
+      // }, 500);
+      // return () => clearTimeout(timer);
+      quickOrganize();
+    }
+  }, [aiStatus]);
+
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -49,6 +62,96 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("tabManagerTheme", isDark ? "dark" : "light");
   }, [isDark]);
+
+  // --- REPLACED: simplified monitor that queries ONLY ungrouped tabs ---
+  useEffect(() => {
+    let tabMonitorInterval;
+
+    const monitorNewTabs = async () => {
+      if (aiStatus !== "ready") return;
+
+      try {
+        // query only ungrouped tabs in currentWindow
+        const rawUngrouped = await chrome.tabs.query({
+          currentWindow: true,
+          groupId: chrome.tabGroups.TAB_GROUP_ID_NONE,
+        });
+
+        // filter out internal urls and map to your minimal shape
+        const ungroupedTabs = rawUngrouped
+          .filter((tab) => {
+            const url = tab.url || "";
+            return (
+              !url.startsWith("chrome://") &&
+              !url.startsWith("chrome-extension://") &&
+              !url.startsWith("edge://") &&
+              !url.startsWith("about:")
+            );
+          })
+          .map((t) => ({ id: t.id, title: t.title, url: t.url }));
+
+        if (ungroupedTabs.length > 0) {
+          const aiResult = await askAIToGroupTabs(
+            ungroupedTabs,
+            "organize these new tabs"
+          );
+
+          if (aiResult.valid) {
+            await createMultipleGroups(aiResult.groups);
+            await updateTabCount();
+            await loadGroups();
+          }
+        }
+      } catch (err) {
+        console.error("Auto-group error:", err);
+      }
+    };
+
+    if (aiStatus === "ready") {
+      tabMonitorInterval = setInterval(monitorNewTabs, 120000); // Check every 2 minutes
+      // run once immediately to catch recently opened tabs
+      monitorNewTabs().catch((e) => console.error(e));
+    }
+
+    return () => {
+      if (tabMonitorInterval) clearInterval(tabMonitorInterval);
+    };
+  }, [aiStatus]);
+  // ---------------------------------------------------------------------
+
+  useEffect(() => {
+    const handleTabCreated = async (tab) => {
+      if (aiStatus !== "ready") return;
+
+      // Wait 2 minutes before auto-grouping
+      setTimeout(async () => {
+        try {
+          const currentTab = await chrome.tabs.get(tab.id);
+
+          // Check if tab is still ungrouped
+          if (currentTab.groupId === chrome.tabGroups.TAB_GROUP_ID_NONE) {
+            const existingGroups = await getAllGroups();
+            const tabs = [{ id: currentTab.id, title: currentTab.title, url: currentTab.url }];
+
+            const aiResult = await askAIToGroupTabs(tabs, "categorize this new tab");
+
+            if (aiResult.valid) {
+              await createMultipleGroups(aiResult.groups);
+              await updateTabCount();
+            }
+          }
+        } catch (err) {
+          console.error("Tab auto-group error:", err);
+        }
+      }, 120000); // 2 minutes delay
+    };
+
+    chrome.tabs.onCreated.addListener(handleTabCreated);
+
+    return () => {
+      chrome.tabs.onCreated.removeListener(handleTabCreated);
+    };
+  }, [aiStatus]);
 
   const initializeAI = async () => {
     try {
@@ -74,14 +177,16 @@ export default function App() {
     }
   };
 
+  // --- REPLACED: updateTabCount now requests ALL tabs explicitly ---
   const updateTabCount = async () => {
     try {
-      const tabs = await getAllTabs();
+      const tabs = await getAllTabs(true); // include grouped tabs for accurate count
       setTabCount(tabs.length);
     } catch (err) {
       console.error("Failed to count tabs:", err);
     }
   };
+  // ---------------------------------------------------------------------
 
   const loadGroups = async () => {
     const groupsList = await getAllGroups();
@@ -92,20 +197,31 @@ export default function App() {
     setMessages((prev) => [...prev, { text, sender, timestamp: Date.now() }]);
   };
 
-  const getAllTabs = async () => {
+  // --- REPLACED: getAllTabs with includeGrouped flag (default: false => only ungrouped) ---
+  const getAllTabs = async (includeGrouped = false) => {
     const tabs = await chrome.tabs.query({ currentWindow: true });
     return tabs
       .filter((tab) => {
         const url = tab.url || "";
-        return (
+        // filter out internal pages
+        const ok =
           !url.startsWith("chrome://") &&
           !url.startsWith("chrome-extension://") &&
           !url.startsWith("edge://") &&
-          !url.startsWith("about:")
-        );
+          !url.startsWith("about:");
+        if (!ok) return false;
+        // if includeGrouped === false, exclude tabs that already belong to a group
+        if (!includeGrouped && tab.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE) return false;
+        return true;
       })
-      .map((tab) => ({ id: tab.id, title: tab.title, url: tab.url }));
+      .map((tab) => ({
+        id: tab.id,
+        title: tab.title,
+        url: tab.url,
+        groupId: tab.groupId, // keep groupId for checks if needed
+      }));
   };
+  // ---------------------------------------------------------------------
 
   const detectCommand = (text) => {
     const lower = text.toLowerCase();
@@ -270,7 +386,8 @@ export default function App() {
       }
 
       if (command.type === "organize") {
-        const tabs = await getAllTabs();
+        // --- REPLACED: only fetch ungrouped tabs ---
+        const tabs = await getAllTabs(false);
         if (tabs.length === 0) {
           setLoading(false);
           addMessage("⚠️ No groupable tabs. Open some webpages first!", "bot");
@@ -321,6 +438,7 @@ export default function App() {
     }
   };
 
+  // --- REPLACED: quickOrganize now only targets ungrouped tabs and bails early ---
   const quickOrganize = async () => {
     if (aiStatus !== "ready") {
       addMessage("⚠️ AI not ready. Use manual commands!", "bot");
@@ -328,12 +446,14 @@ export default function App() {
     }
     setLoading(true);
     try {
-      const tabs = await getAllTabs();
-      if (tabs.length === 0) {
-        addMessage("⚠️ No groupable tabs!", "bot");
+      // only get ungrouped tabs
+      const tabs = await getAllTabs(false);
+      if (!tabs || tabs.length === 0) {
+        addMessage("⚠️ No ungrouped tabs to organize!", "bot");
         setLoading(false);
         return;
       }
+
       const aiResult = await askAIToGroupTabs(tabs, "organize intelligently");
       if (!aiResult.valid) {
         setLoading(false);
@@ -347,12 +467,15 @@ export default function App() {
         await updateTabCount();
         await loadGroups();
         setShowGroupManager(true);
+      } else {
+        addMessage(`❌ Error: ${result.error}`, "bot");
       }
     } catch (err) {
       setLoading(false);
       addMessage(`❌ Error: ${err.message}`, "bot");
     }
   };
+  // ---------------------------------------------------------------------
 
   return (
     // Main container
@@ -466,13 +589,7 @@ export default function App() {
             icon={MessageCircleQuestionMark}
             text="Help"
           />
-          <Button
-            onClick={quickOrganize}
-            disabled={loading || aiStatus !== "ready"}
-            isDark={isDark}
-            icon={Sparkles}
-            text="Smart Mode"
-          />
+          
         </div>
       </div>
 

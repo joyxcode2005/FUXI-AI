@@ -253,3 +253,5 @@ export const parseAIResponse = (response, tabs) => {
     return { valid: false, error: err.message };
   }
 };
+
+

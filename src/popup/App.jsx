@@ -23,6 +23,50 @@ import { Folder } from "lucide-react";
 import { Pencil } from "lucide-react";
 import { Trash2 } from "lucide-react";
 
+// Listen for messages from background.js
+chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
+  if (message.type === "AI_GROUP_TABS") {
+    try {
+      const result = await handleAIGrouping(message.tabs);
+      sendResponse(result);
+    } catch (err) {
+      console.error("AI grouping failed:", err);
+      sendResponse({ error: err.message });
+    }
+  }
+  // Important: keeps the message channel open for async response
+  return true;
+});
+
+// 🧩 2. The AI grouping function (Gemini Nano logic)
+async function handleAIGrouping(tabs) {
+  // Create a Gemini Nano local model instance
+  const model = await window.ai.languageModel.create({ systemPrompt });
+
+  // Prepare list of tab info for the AI
+  const tabsList = tabs
+    .map((t) => `Tab ${t.id}: "${t.title}" - ${new URL(t.url).hostname}`)
+    .join("\n");
+
+  // Prompt the AI
+  const prompt = `
+  ${systemPrompt}
+
+  Tabs:
+  ${tabsList}
+`;
+
+  // Ask Gemini Nano
+  const response = await model.prompt(prompt);
+
+  // Clean and parse the output safely
+  const cleaned = response.trim().replace(/```json|```/g, "");
+  const parsed = JSON.parse(cleaned);
+
+  console.log("AI Groups Generated:", parsed);
+  return parsed;
+}
+
 export default function App() {
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState([]);
@@ -503,7 +547,7 @@ export default function App() {
   const handleHelp = () => {
     setPrompt("help");
   };
-    
+
   // ---------------------------------------------------------------------
 
   return (
@@ -519,7 +563,7 @@ export default function App() {
       <div
         className={`sticky top-0 h-40 px-6 py-4 ${
           isDark
-            ? "bg-gradient-to-r from-slate-800/40 to-indigo-900/40 backdrop-blur-xl border-b border-white/10"
+            ? "bg-gradient-to-tl from-gray-900/40 to-cyan-700/40 backdrop-blur-xl border-b border-white/10"
             : "bg-white/60 backdrop-blur-xl border-b border-indigo-200/50"
         }`}
       >
@@ -530,7 +574,7 @@ export default function App() {
             {/* Container for the icons and title  */}
             <div className="flex items-center justify-start w-[50vh] gap-4">
               <div
-                className={`w-11 h-11 rounded-2xl flex items-center justify-center text-2xl shadow-lg transform hover:scale-105 transition-transform
+                className={`w-11 h-11 rounded-2xl flex items-center justify-center text-2xl shadow-lg transform hover:scale-105 transition-transform text-black bg-gradient-to-bl from-amber-400 via-yellow-500 to-orange-600
                 ${isDark ? "text-white" : "text-black"}
                 `}
               >
@@ -545,9 +589,9 @@ export default function App() {
               </h3>
             </div>
             <div>
-              <div className="flex items-center ml-13 w-[30vh] gap-2 mt-0.5">
+              <div className="flex items-center ml-13 w-[40vh] gap-2 mt-0.5">
                 {/* Ready badge that weather changes based on aiStatus */}
-                <div className="flex items-center animate-pulse justify-center gap-2 backdrop-blur-md px-4 py-1 rounded-xl">
+                <div className="flex items-center justify-center gap-2 backdrop-blur-md px-4 py-1 rounded-xl">
                   {aiStatus === "ready" ? (
                     <span
                       className={`${
@@ -567,9 +611,10 @@ export default function App() {
                   )}
                 </div>
                 <span
-                  className={`text-xs font-medium backdrop-blur-md px-4 py-1 rounded-xl not-first: ${
-                    isDark ? "text-yellow-300" : "text-yellow-600"
-                  }`}
+                  className={`text-xs font-medium px-4 py-2 rounded-xl not-first: text-yellow-400 
+                    ${isDark ? "bg-transparent text-yell" : "bg-gray-200"}
+                    backdrop-blur-xl
+                    `}
                 >
                   {tabCount} Tabs Open
                 </span>
@@ -653,7 +698,7 @@ export default function App() {
           {/* Groups List */}
           <div
             className={`flex-1 overflow-y-auto px-6 py-5 ${
-              isDark ? "bg-slate-900/30" : "bg-white/30"
+              isDark ? "" : "bg-white/30"
             }`}
           >
             {/* Fallback for no groups */}
@@ -675,11 +720,7 @@ export default function App() {
                 {groups.map((group) => (
                   <div
                     key={group.id}
-                    className={`rounded-xl transition-all hover:scale-[1.02] ${
-                      isDark
-                        ? "bg-slate-800/80 border border-slate-700/50 shadow-lg"
-                        : "bg-white border border-slate-200 shadow-md"
-                    }`}
+                    className="rounded-xl transition-all hover:scale-[1.02]"
                   >
                     {renamingGroup === group.title ? (
                       //  Interface for renaming a group
@@ -693,22 +734,22 @@ export default function App() {
                               handleRenameSubmit(group.title);
                             if (e.key === "Escape") setRenamingGroup(null);
                           }}
-                          className={`flex-1 px-3 py-1.5 rounded-lg text-sm focus:outline-none focus:ring-2 ${
+                          className={`flex-1 px-3 py-1.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 ${
                             isDark
-                              ? "bg-slate-700 border border-slate-600 text-white focus:ring-purple-500/50"
-                              : "bg-white border border-slate-300 text-slate-900 focus:ring-indigo-500/50"
+                              ? "bg-slate-700 border border-slate-600 text-white "
+                              : "bg-white border border-slate-300 text-slate-900"
                           }`}
                           autoFocus
                         />
                         <button
                           onClick={() => handleRenameSubmit(group.title)}
-                          className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-lime-500 to-green-900 text-white text-sm font-semibold hover:shadow-lg transition-all"
+                          className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-lime-500 to-green-500 text-white text-sm font-semibold hover:shadow-lg transition-all hover:bg-lime-200 cursor-pointer"
                         >
                           ✓
                         </button>
                         <button
                           onClick={() => setRenamingGroup(null)}
-                          className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${
+                          className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
                             isDark
                               ? "bg-slate-700 text-white hover:bg-slate-600"
                               : "bg-slate-200 text-slate-700 hover:bg-slate-300"
@@ -808,7 +849,9 @@ export default function App() {
           {/* Chat Area */}
           <div
             className={`flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-3 ${
-              isDark ? "bg-slate-900/30" : "bg-white/30"
+              isDark
+                ? "bg-gradient-to-br from-gray-900 via-cyan-900 to-black"
+                : "bg-white/30"
             }`}
           >
             {messages.map((msg, i) => {
@@ -902,7 +945,7 @@ export default function App() {
           <div
             className={`px-6 py-4 ${
               isDark
-                ? "bg-gradient-to-r from-purple-900/40 to-indigo-900/40 backdrop-blur-xl border-t border-white/10"
+                ? "bg-gradient-to-tl from-gray-900/40 to-cyan-700/40 backdrop-blur-xl border-b border-white/10"
                 : "bg-white/60 backdrop-blur-xl border-t border-indigo-200/50"
             }`}
           >
@@ -914,16 +957,16 @@ export default function App() {
                 onKeyDown={(e) => e.key === "Enter" && !loading && handleSend()}
                 placeholder="Ask me to organize your tabs..."
                 disabled={loading}
-                className={`flex-1 px-4 py-3 rounded-xl text-sm transition-all focus:outline-none focus:ring-2 ${
+                className={`flex-1 px-4 py-3 rounded-xl text-sm transition-all outline-none focus:ring-2 focus:ring-cyan-500 ${
                   isDark
-                    ? "bg-slate-800/50 border border-slate-700 text-white placeholder-slate-400 focus:ring-purple-500/50 focus:border-purple-500/50"
-                    : "bg-white border border-slate-300 text-slate-900 placeholder-slate-400 focus:ring-indigo-500/50 focus:border-indigo-500"
+                    ? "bg-slate-800/50 border border-slate-700 text-white placeholder-slate-400 "
+                    : "bg-white border border-slate-300 text-slate-900 placeholder-slate-400 "
                 } ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
               />
               <button
                 onClick={handleSend}
                 disabled={loading || !prompt.trim()}
-                className={`px-5 py-3 rounded-xl font-semibold transition-all ${
+                className={`px-5 py-3 rounded-xl font-semibold transition-all  ${
                   loading || !prompt.trim()
                     ? "bg-slate-400/30 text-slate-500 cursor-not-allowed"
                     : "bg-gradient-to-r from-green-500 to-green-600 cursor-pointer text-white hover:shadow-lg hover:scale-105"

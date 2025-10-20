@@ -71,7 +71,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState([]);
   const [prompt, setPrompt] = useState("");
-  const [aiStatus, setAiStatus] = useState("Initializing..");
+  const [aiStatus, setAiStatus] = useState("Checking...");
   const [tabCount, setTabCount] = useState(0);
   const [isDark, setIsDark] = useState(true);
   const [showGroupManager, setShowGroupManager] = useState(false);
@@ -80,26 +80,16 @@ export default function App() {
   const [newGroupName, setNewGroupName] = useState("");
   const sessionRef = useRef(null);
   const chatEndRef = useRef(null);
-  const hasAutoOrganized = useRef(false);
 
   useEffect(() => {
     initializeAI();
     updateTabCount();
     const savedTheme = localStorage.getItem("tabManagerTheme");
     if (savedTheme) setIsDark(savedTheme === "dark");
+    
+    // Check background service AI status
+    checkBackgroundAIStatus();
   }, []);
-
-  // Separate useEffect to trigger auto-organize when AI becomes ready
-  useEffect(() => {
-    if (aiStatus === "ready" && !hasAutoOrganized.current) {
-      hasAutoOrganized.current = true;
-      // const timer = setTimeout(() => {
-      //   quickOrganize();
-      // }, 500);
-      // return () => clearTimeout(timer);
-      quickOrganize();
-    }
-  }, [aiStatus]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -109,108 +99,22 @@ export default function App() {
     localStorage.setItem("tabManagerTheme", isDark ? "dark" : "light");
   }, [isDark]);
 
-  // --- REPLACED: simplified monitor that queries ONLY ungrouped tabs ---
-  useEffect(() => {
-    let tabMonitorInterval;
-
-    const monitorNewTabs = async () => {
-      if (aiStatus !== "ready") return;
-
-      try {
-        // query only ungrouped tabs in currentWindow
-        const rawUngrouped = await chrome.tabs.query({
-          currentWindow: true,
-          groupId: chrome.tabGroups.TAB_GROUP_ID_NONE,
-        });
-
-        // filter out internal urls and map to your minimal shape
-        const ungroupedTabs = rawUngrouped
-          .filter((tab) => {
-            const url = tab.url || "";
-            return (
-              !url.startsWith("chrome://") &&
-              !url.startsWith("chrome-extension://") &&
-              !url.startsWith("edge://") &&
-              !url.startsWith("about:")
-            );
-          })
-          .map((t) => ({ id: t.id, title: t.title, url: t.url }));
-
-        if (ungroupedTabs.length > 0) {
-          const aiResult = await askAIToGroupTabs(
-            ungroupedTabs,
-            "organize these new tabs"
-          );
-
-          if (aiResult.valid) {
-            await createMultipleGroups(aiResult.groups);
-            await updateTabCount();
-            await loadGroups();
-          }
-        }
-      } catch (err) {
-        console.error("Auto-group error:", err);
-      }
-    };
-
-    if (aiStatus === "ready") {
-      tabMonitorInterval = setInterval(monitorNewTabs, 120000); // Check every 2 minutes
-      // run once immediately to catch recently opened tabs
-      monitorNewTabs().catch((e) => console.error(e));
-    }
-
-    return () => {
-      if (tabMonitorInterval) clearInterval(tabMonitorInterval);
-    };
-  }, [aiStatus]);
-  // ---------------------------------------------------------------------
-
-  useEffect(() => {
-    const handleTabCreated = async (tab) => {
-      if (aiStatus !== "ready") return;
-
-      // Wait 2 minutes before auto-grouping
-      setTimeout(async () => {
-        try {
-          const currentTab = await chrome.tabs.get(tab.id);
-
-          // Check if tab is still ungrouped
-          if (currentTab.groupId === chrome.tabGroups.TAB_GROUP_ID_NONE) {
-            const existingGroups = await getAllGroups();
-            const tabs = [
-              {
-                id: currentTab.id,
-                title: currentTab.title,
-                url: currentTab.url,
-              },
-            ];
-
-            const aiResult = await askAIToGroupTabs(
-              tabs,
-              "categorize this new tab"
-            );
-
-            if (aiResult.valid) {
-              await createMultipleGroups(aiResult.groups);
-              await updateTabCount();
-            }
-          }
-        } catch (err) {
-          console.error("Tab auto-group error:", err);
-        }
-      }, 120000); // 2 minutes delay
-    };
-
-    chrome.tabs.onCreated.addListener(handleTabCreated);
-
-    return () => {
-      chrome.tabs.onCreated.removeListener(handleTabCreated);
-    };
-  }, [aiStatus]);
-
   useEffect(() => {
     if (prompt === "help") handleSend();
   }, [prompt]);
+
+  // Check AI status from background service
+  const checkBackgroundAIStatus = async () => {
+    try {
+      const response = await chrome.runtime.sendMessage({ action: "getAIStatus" });
+      if (response && response.status === "ready") {
+        setAiStatus("ready");
+        addMessage("✅ AI is running in the background and auto-organizing your tabs!", "system");
+      }
+    } catch (err) {
+      console.log("Background check failed:", err);
+    }
+  };
 
   const initializeAI = async () => {
     try {
@@ -236,16 +140,23 @@ export default function App() {
     }
   };
 
-  // --- REPLACED: updateTabCount now requests ALL tabs explicitly ---
   const updateTabCount = async () => {
     try {
-      const tabs = await getAllTabs(true); // include grouped tabs for accurate count
-      setTabCount(tabs.length);
+      const tabs = await chrome.tabs.query({ currentWindow: true });
+      const validTabs = tabs.filter((tab) => {
+        const url = tab.url || "";
+        return (
+          !url.startsWith("chrome://") &&
+          !url.startsWith("chrome-extension://") &&
+          !url.startsWith("edge://") &&
+          !url.startsWith("about:")
+        );
+      });
+      setTabCount(validTabs.length);
     } catch (err) {
       console.error("Failed to count tabs:", err);
     }
   };
-  // ---------------------------------------------------------------------
 
   const loadGroups = async () => {
     const groupsList = await getAllGroups();
@@ -256,20 +167,17 @@ export default function App() {
     setMessages((prev) => [...prev, { text, sender, timestamp: Date.now() }]);
   };
 
-  // --- REPLACED: getAllTabs with includeGrouped flag (default: false => only ungrouped) ---
   const getAllTabs = async (includeGrouped = false) => {
     const tabs = await chrome.tabs.query({ currentWindow: true });
     return tabs
       .filter((tab) => {
         const url = tab.url || "";
-        // filter out internal pages
         const ok =
           !url.startsWith("chrome://") &&
           !url.startsWith("chrome-extension://") &&
           !url.startsWith("edge://") &&
           !url.startsWith("about:");
         if (!ok) return false;
-        // if includeGrouped === false, exclude tabs that already belong to a group
         if (
           !includeGrouped &&
           tab.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE
@@ -281,10 +189,9 @@ export default function App() {
         id: tab.id,
         title: tab.title,
         url: tab.url,
-        groupId: tab.groupId, // keep groupId for checks if needed
+        groupId: tab.groupId,
       }));
   };
-  // ---------------------------------------------------------------------
 
   const detectCommand = (text) => {
     const lower = text.toLowerCase();
@@ -350,7 +257,6 @@ export default function App() {
     return parseAIResponse(response, tabs);
   };
 
-  // Function to handle ungrouping
   const handleUngroup = async (groupTitle) => {
     const result = await ungroupTabs(groupTitle);
     if (result.success) {
@@ -365,13 +271,11 @@ export default function App() {
     }
   };
 
-  // Funciton to initiate renaming
   const handleRenameStart = (group) => {
     setRenamingGroup(group.title);
     setNewGroupName(group.title);
   };
 
-  // Function to handle renaming submission
   const handleRenameSubmit = async (oldTitle) => {
     if (!newGroupName.trim() || newGroupName === oldTitle) {
       setRenamingGroup(null);
@@ -388,7 +292,6 @@ export default function App() {
     setNewGroupName("");
   };
 
-  // send the prompt to ai to execute the command
   const handleSend = async () => {
     const text = prompt.trim();
     if (!text || loading) return;
@@ -453,7 +356,6 @@ export default function App() {
       }
 
       if (command.type === "organize") {
-        // --- REPLACED: only fetch ungrouped tabs ---
         const tabs = await getAllTabs(false);
         if (tabs.length === 0) {
           setLoading(false);
@@ -505,53 +407,28 @@ export default function App() {
     }
   };
 
-  // --- REPLACED: quickOrganize now only targets ungrouped tabs and bails early ---
   const quickOrganize = async () => {
-    if (aiStatus !== "ready") {
-      addMessage("⚠️ AI not ready. Use manual commands!", "bot");
-      return;
-    }
-    setLoading(true);
     try {
-      // only get ungrouped tabs
-      const tabs = await getAllTabs(false);
-      if (!tabs || tabs.length === 0) {
-        addMessage("⚠️ No ungrouped tabs to organize!", "bot");
-        setLoading(false);
-        return;
-      }
-
-      const aiResult = await askAIToGroupTabs(tabs, "organize intelligently");
-      if (!aiResult.valid) {
-        setLoading(false);
-        addMessage(`❌ Error: ${aiResult.error}`, "bot");
-        return;
-      }
-      const result = await createMultipleGroups(aiResult.groups);
-      setLoading(false);
-      if (result.success) {
-        addMessage(`✅ Organized into ${result.groupsCreated} groups!`, "bot");
-        await updateTabCount();
-        await loadGroups();
-        setShowGroupManager(true);
+      const response = await chrome.runtime.sendMessage({ action: "organizeNow" });
+      if (response && response.success) {
+        addMessage("✅ Background service is organizing your tabs!", "bot");
+        setTimeout(async () => {
+          await updateTabCount();
+          await loadGroups();
+        }, 2000);
       } else {
-        addMessage(`❌ Error: ${result.error}`, "bot");
+        addMessage("⚠️ Could not trigger background organization", "bot");
       }
     } catch (err) {
-      setLoading(false);
       addMessage(`❌ Error: ${err.message}`, "bot");
     }
   };
 
-  // --- REPLACED: handleHelp to set prompt state ---
   const handleHelp = () => {
     setPrompt("help");
   };
 
-  // ---------------------------------------------------------------------
-
   return (
-    // Main container
     <div
       className={`w-[500px] h-[600px] ${
         isDark
@@ -559,7 +436,6 @@ export default function App() {
           : "bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50"
       } font-sans flex flex-col transition-all duration-500`}
     >
-      {/* Header  */}
       <div
         className={`sticky top-0 h-40 px-6 py-4 ${
           isDark
@@ -567,11 +443,8 @@ export default function App() {
             : "bg-white/60 backdrop-blur-xl border-b border-indigo-200/50"
         }`}
       >
-        {/* Whole top part of the popup header */}
         <div className="relative flex items-start justify-between mb-4">
-          {/* Left side of the popup header */}
           <div className="flex flex-col justify-between items-start ">
-            {/* Container for the icons and title  */}
             <div className="flex items-center justify-start w-[50vh] gap-4">
               <div
                 className={`w-11 h-11 rounded-2xl flex items-center justify-center text-2xl shadow-lg transform hover:scale-105 transition-transform text-black bg-gradient-to-bl from-amber-400 via-yellow-500 to-orange-600
@@ -598,7 +471,7 @@ export default function App() {
                         isDark ? "text-emerald-400" : "text-emerald-600"
                       } font-bold`}
                     >
-                      Ready
+                      Auto-Active
                     </span>
                   ) : (
                     <span
@@ -606,7 +479,7 @@ export default function App() {
                         isDark ? "text-slate-400" : "text-black"
                       } font-bold`}
                     >
-                      Unavailable
+                      {aiStatus}
                     </span>
                   )}
                 </div>
@@ -633,7 +506,6 @@ export default function App() {
           </button>
         </div>
 
-        {/* Quick Actions */}
         <div className="relative flex gap-2">
           {showGroupManager ? (
             <Button
@@ -667,7 +539,6 @@ export default function App() {
       </div>
 
       {showGroupManager ? (
-        // The group manager view
         <div
           className={`w-[500px] h-[600px] overflow-x-hidden ${
             isDark
@@ -675,7 +546,6 @@ export default function App() {
               : "bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50"
           } font-sans flex flex-col transition-all duration-500`}
         >
-          {/* Group Manager Header */}
           <div
             className={`flex justify-between items-center px-6 py-4 border-b border-slate-300/20 `}
           >
@@ -695,13 +565,11 @@ export default function App() {
             </span>
           </div>
 
-          {/* Groups List */}
           <div
             className={`flex-1 overflow-y-auto px-6 py-5 ${
               isDark ? "" : "bg-white/30"
             }`}
           >
-            {/* Fallback for no groups */}
             {groups.length === 0 ? (
               <div className="flex flex-col gap-2 items-center justify-center h-full">
                 <Folder
@@ -723,7 +591,6 @@ export default function App() {
                     className="rounded-xl transition-all hover:scale-[1.02]"
                   >
                     {renamingGroup === group.title ? (
-                      //  Interface for renaming a group
                       <div className="flex gap-2">
                         <input
                           type="text"
@@ -760,7 +627,6 @@ export default function App() {
                       </div>
                     ) : (
                       <>
-                        {/* Group Card */}
                         <div
                           className={`flex justify-between items-center p-4 rounded-2xl shadow-sm border transition-all ${
                             isDark
@@ -768,7 +634,6 @@ export default function App() {
                               : "bg-white border-slate-200 hover:border-slate-300"
                           }`}
                         >
-                          {/* Left Section - Group Title + Tab Count */}
                           <div className="flex items-start gap-3">
                             <div
                               className={`w-3 h-3 mt-1 rounded-full ${
@@ -811,7 +676,6 @@ export default function App() {
                             </div>
                           </div>
 
-                          {/* Right Section - Icon Buttons */}
                           <div className="flex gap-2">
                             <button
                               onClick={() => handleRenameStart(group)}
@@ -846,7 +710,6 @@ export default function App() {
         </div>
       ) : (
         <>
-          {/* Chat Area */}
           <div
             className={`flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-3 ${
               isDark
@@ -858,7 +721,6 @@ export default function App() {
               const isUser = msg.sender === "user";
               const isSystem = msg.sender === "system";
 
-              // User messages
               if (isUser) {
                 return (
                   <div
@@ -874,7 +736,6 @@ export default function App() {
                   </div>
                 );
               }
-              // Systems messages
               if (isSystem) {
                 return (
                   <div key={i} className="flex justify-center animate-fade-in">
@@ -890,7 +751,6 @@ export default function App() {
                   </div>
                 );
               }
-              // AI Responses
               return (
                 <div
                   key={i}
@@ -913,7 +773,6 @@ export default function App() {
               );
             })}
 
-            {/* Loading indicator */}
             {loading && (
               <div className="flex justify-start animate-pulse">
                 <div
@@ -982,7 +841,6 @@ export default function App() {
         </>
       )}
 
-      {/* Custom Styles */}
       <style>{`
         @keyframes slide-in-right {
           from {
@@ -1024,7 +882,6 @@ export default function App() {
           animation: fade-in 0.3s ease-out;
         }
 
-        /* Custom Scrollbar */
         .overflow-y-auto::-webkit-scrollbar {
           width: 6px;
         }

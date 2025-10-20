@@ -4,20 +4,7 @@ let aiSession = null;
 let aiStatus = "initializing";
 let isProcessing = false;
 
-const systemPrompt = `You are a tab organization assistant. Analyze tabs and group them logically by topic, purpose, or domain.
-
-Rules:
-1. Group similar tabs together (e.g., social media, work, shopping, news)
-2. Use clear, concise group names
-3. Each tab ID must appear in exactly one group
-4. Return ONLY valid JSON with this structure:
-{
-  "groups": {
-    "Group Name 1": [tab_id1, tab_id2],
-    "Group Name 2": [tab_id3, tab_id4]
-  },
-  "explanation": "Brief explanation of grouping logic"
-}`;
+import { systemPrompt,} from "../utils";
 
 // Initialize AI on extension startup
 async function initializeAI() {

@@ -88,19 +88,26 @@ Ensure valid JSON formatting and logically merged groups.
 `;
 
 export const helpMessage = `
-          📚 AI Commands:
-              • organize my tabs
-              • group tabs by topic
+## 📚 AI Commands
 
-          🛠️ Manual Commands:
-              • group all as <your group name>
-              • rename <old group name> to <new group name>
-              • ungroup <group name>
-              • list groups
+- organize my tabs  
+- group tabs by topic  
 
-          💡Examples:
-              • group all as Work
-              • list groups
+---
+
+## 🛠️ Manual Commands
+
+- \`group all as <your group name>\`  
+- \`rename <old group name> to <new group name>\`  
+- \`ungroup <group name>\`  
+- \`list groups\`  
+
+---
+
+## 💡 Examples
+
+- \`group all as Work\`  
+- \`list groups\`
 `;
 
 export const aiReadyMessage = `

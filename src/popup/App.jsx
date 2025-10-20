@@ -11,15 +11,17 @@ import {
   systemPrompt,
   ungroupTabs,
 } from "../utils";
+import ReactMarkdown from "react-markdown";
 import { BotMessageSquare } from "lucide-react";
 import { Sun } from "lucide-react";
 import { Moon } from "lucide-react";
 import { Boxes } from "lucide-react";
 import Button from "../components/Button";
 import { MessageCircleQuestionMark } from "lucide-react";
-import { Sparkles } from "lucide-react";
 import { SendHorizontal } from "lucide-react";
 import { Folder } from "lucide-react";
+import { Pencil } from "lucide-react";
+import { Trash2 } from "lucide-react";
 
 export default function App() {
   const [loading, setLoading] = useState(false);
@@ -131,9 +133,18 @@ export default function App() {
           // Check if tab is still ungrouped
           if (currentTab.groupId === chrome.tabGroups.TAB_GROUP_ID_NONE) {
             const existingGroups = await getAllGroups();
-            const tabs = [{ id: currentTab.id, title: currentTab.title, url: currentTab.url }];
+            const tabs = [
+              {
+                id: currentTab.id,
+                title: currentTab.title,
+                url: currentTab.url,
+              },
+            ];
 
-            const aiResult = await askAIToGroupTabs(tabs, "categorize this new tab");
+            const aiResult = await askAIToGroupTabs(
+              tabs,
+              "categorize this new tab"
+            );
 
             if (aiResult.valid) {
               await createMultipleGroups(aiResult.groups);
@@ -152,6 +163,10 @@ export default function App() {
       chrome.tabs.onCreated.removeListener(handleTabCreated);
     };
   }, [aiStatus]);
+
+  useEffect(() => {
+    if (prompt === "help") handleSend();
+  }, [prompt]);
 
   const initializeAI = async () => {
     try {
@@ -211,7 +226,11 @@ export default function App() {
           !url.startsWith("about:");
         if (!ok) return false;
         // if includeGrouped === false, exclude tabs that already belong to a group
-        if (!includeGrouped && tab.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE) return false;
+        if (
+          !includeGrouped &&
+          tab.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE
+        )
+          return false;
         return true;
       })
       .map((tab) => ({
@@ -287,6 +306,7 @@ export default function App() {
     return parseAIResponse(response, tabs);
   };
 
+  // Function to handle ungrouping
   const handleUngroup = async (groupTitle) => {
     const result = await ungroupTabs(groupTitle);
     if (result.success) {
@@ -301,11 +321,13 @@ export default function App() {
     }
   };
 
+  // Funciton to initiate renaming
   const handleRenameStart = (group) => {
     setRenamingGroup(group.title);
     setNewGroupName(group.title);
   };
 
+  // Function to handle renaming submission
   const handleRenameSubmit = async (oldTitle) => {
     if (!newGroupName.trim() || newGroupName === oldTitle) {
       setRenamingGroup(null);
@@ -322,6 +344,7 @@ export default function App() {
     setNewGroupName("");
   };
 
+  // send the prompt to ai to execute the command
   const handleSend = async () => {
     const text = prompt.trim();
     if (!text || loading) return;
@@ -475,6 +498,12 @@ export default function App() {
       addMessage(`❌ Error: ${err.message}`, "bot");
     }
   };
+
+  // --- REPLACED: handleHelp to set prompt state ---
+  const handleHelp = () => {
+    setPrompt("help");
+  };
+    
   // ---------------------------------------------------------------------
 
   return (
@@ -583,13 +612,12 @@ export default function App() {
           )}
 
           <Button
-            onClick={() => setPrompt("help")}
+            onClick={handleHelp}
             disabled={loading}
             isDark={isDark}
             icon={MessageCircleQuestionMark}
             text="Help"
           />
-          
         </div>
       </div>
 
@@ -628,6 +656,7 @@ export default function App() {
               isDark ? "bg-slate-900/30" : "bg-white/30"
             }`}
           >
+            {/* Fallback for no groups */}
             {groups.length === 0 ? (
               <div className="flex flex-col gap-2 items-center justify-center h-full">
                 <Folder
@@ -646,13 +675,14 @@ export default function App() {
                 {groups.map((group) => (
                   <div
                     key={group.id}
-                    className={`p-4 rounded-xl transition-all hover:scale-[1.02] ${
+                    className={`rounded-xl transition-all hover:scale-[1.02] ${
                       isDark
                         ? "bg-slate-800/80 border border-slate-700/50 shadow-lg"
                         : "bg-white border border-slate-200 shadow-md"
                     }`}
                   >
                     {renamingGroup === group.title ? (
+                      //  Interface for renaming a group
                       <div className="flex gap-2">
                         <input
                           type="text"
@@ -672,7 +702,7 @@ export default function App() {
                         />
                         <button
                           onClick={() => handleRenameSubmit(group.title)}
-                          className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-500 to-indigo-600 text-white text-sm font-semibold hover:shadow-lg transition-all"
+                          className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-lime-500 to-green-900 text-white text-sm font-semibold hover:shadow-lg transition-all"
                         >
                           ✓
                         </button>
@@ -689,10 +719,18 @@ export default function App() {
                       </div>
                     ) : (
                       <>
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex items-center gap-2">
+                        {/* Group Card */}
+                        <div
+                          className={`flex justify-between items-center p-4 rounded-2xl shadow-sm border transition-all ${
+                            isDark
+                              ? "bg-slate-800 border-slate-700 hover:border-slate-600"
+                              : "bg-white border-slate-200 hover:border-slate-300"
+                          }`}
+                        >
+                          {/* Left Section - Group Title + Tab Count */}
+                          <div className="flex items-start gap-3">
                             <div
-                              className={`w-3 h-3 rounded-full ${
+                              className={`w-3 h-3 mt-1 rounded-full ${
                                 group.color === "blue"
                                   ? "bg-blue-500"
                                   : group.color === "red"
@@ -710,46 +748,52 @@ export default function App() {
                                   : "bg-orange-500"
                               }`}
                             ></div>
-                            <h4
-                              className={`font-bold text-base ${
-                                isDark ? "text-white" : "text-slate-900"
+
+                            <div className="flex flex-col">
+                              <h4
+                                className={`font-semibold text-base leading-tight ${
+                                  isDark ? "text-white" : "text-slate-900"
+                                }`}
+                              >
+                                {group.title}
+                              </h4>
+                              <span
+                                className={`text-xs mt-1 px-2 py-0.5 rounded-md w-fit ${
+                                  isDark
+                                    ? "bg-slate-700 text-slate-300"
+                                    : "bg-slate-100 text-slate-600"
+                                }`}
+                              >
+                                {group.tabCount}{" "}
+                                {group.tabCount === 1 ? "tab" : "tabs"}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Right Section - Icon Buttons */}
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleRenameStart(group)}
+                              className={`p-2 rounded-lg transition-all hover:scale-110 cursor-pointer ${
+                                isDark
+                                  ? "bg-green-600/80 hover:bg-green-600 text-white"
+                                  : "bg-green-500 hover:bg-green-600 text-white"
                               }`}
                             >
-                              {group.title}
-                            </h4>
+                              <Pencil size={16} />
+                            </button>
+
+                            <button
+                              onClick={() => handleUngroup(group.title)}
+                              className={`p-2 rounded-lg transition-all hover:scale-110 cursor-pointer ${
+                                isDark
+                                  ? "bg-red-600/80 hover:bg-red-600 text-white"
+                                  : "bg-red-500 hover:bg-red-600 text-white"
+                              }`}
+                            >
+                              <Trash2 size={16} />
+                            </button>
                           </div>
-                          <span
-                            className={`text-xs px-2 py-1 rounded-full ${
-                              isDark
-                                ? "bg-slate-700 text-slate-300"
-                                : "bg-slate-100 text-slate-600"
-                            }`}
-                          >
-                            {group.tabCount} tabs
-                          </span>
-                        </div>
-                              
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => handleRenameStart(group)}
-                            className={`flex-1 px-3 py-2 rounded-lg text-sm font-semibold transition-all hover:scale-105 ${
-                              isDark
-                                ? "bg-indigo-600/80 hover:bg-indigo-600 text-white"
-                                : "bg-indigo-500 hover:bg-indigo-600 text-white"
-                            }`}
-                          >
-                            Rename
-                          </button>
-                          <button
-                            onClick={() => handleUngroup(group.title)}
-                            className={`flex-1 px-3 py-2 rounded-lg text-sm font-semibold transition-all hover:scale-105 ${
-                              isDark
-                                ? "bg-red-600/80 hover:bg-red-600 text-white"
-                                : "bg-red-500 hover:bg-red-600 text-white"
-                            }`}
-                          >
-                            🗑️ Ungroup
-                          </button>
                         </div>
                       </>
                     )}
@@ -771,6 +815,7 @@ export default function App() {
               const isUser = msg.sender === "user";
               const isSystem = msg.sender === "system";
 
+              // User messages
               if (isUser) {
                 return (
                   <div
@@ -786,7 +831,7 @@ export default function App() {
                   </div>
                 );
               }
-
+              // Systems messages
               if (isSystem) {
                 return (
                   <div key={i} className="flex justify-center animate-fade-in">
@@ -802,26 +847,30 @@ export default function App() {
                   </div>
                 );
               }
-
+              // AI Responses
               return (
                 <div
                   key={i}
                   className="flex justify-start animate-slide-in-left"
                 >
                   <div
-                    className={`max-w-[85%] px-2 py-1 rounded-2xl rounded-tl-md shadow-md text-sm leading-relaxed ${
+                    className={`max-w-[90%] px-4 py-2 rounded-2xl rounded-tl-md shadow-md text-sm ${
                       isDark
                         ? "bg-slate-800/80 text-slate-100 border border-slate-700/50"
                         : "bg-white text-slate-800 border border-slate-200"
                     }`}
-                    style={{ wordWrap: "break-word", whiteSpace: "pre-wrap" }}
+                    style={{
+                      wordWrap: "break-word",
+                      whiteSpace: "preserve-breaks",
+                    }}
                   >
-                    {msg.text}
+                    <ReactMarkdown>{msg.text}</ReactMarkdown>
                   </div>
                 </div>
               );
             })}
 
+            {/* Loading indicator */}
             {loading && (
               <div className="flex justify-start animate-pulse">
                 <div

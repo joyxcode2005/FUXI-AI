@@ -23,49 +23,6 @@ import { Folder } from "lucide-react";
 import { Pencil } from "lucide-react";
 import { Trash2 } from "lucide-react";
 
-// Listen for messages from background.js
-chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
-  if (message.type === "AI_GROUP_TABS") {
-    try {
-      const result = await handleAIGrouping(message.tabs);
-      sendResponse(result);
-    } catch (err) {
-      console.error("AI grouping failed:", err);
-      sendResponse({ error: err.message });
-    }
-  }
-  // Important: keeps the message channel open for async response
-  return true;
-});
-
-// 🧩 2. The AI grouping function (Gemini Nano logic)
-async function handleAIGrouping(tabs) {
-  // Create a Gemini Nano local model instance
-  const model = await window.ai.languageModel.create({ systemPrompt });
-
-  // Prepare list of tab info for the AI
-  const tabsList = tabs
-    .map((t) => `Tab ${t.id}: "${t.title}" - ${new URL(t.url).hostname}`)
-    .join("\n");
-
-  // Prompt the AI
-  const prompt = `
-  ${systemPrompt}
-
-  Tabs:
-  ${tabsList}
-`;
-
-  // Ask Gemini Nano
-  const response = await model.prompt(prompt);
-
-  // Clean and parse the output safely
-  const cleaned = response.trim().replace(/```json|```/g, "");
-  const parsed = JSON.parse(cleaned);
-
-  console.log("AI Groups Generated:", parsed);
-  return parsed;
-}
 
 export default function App() {
   const [loading, setLoading] = useState(false);

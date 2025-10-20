@@ -4,7 +4,7 @@ let aiSession = null;
 let aiStatus = "initializing";
 let isProcessing = false;
 
-import { systemPrompt,} from "../utils";
+import { systemPrompt} from "../utils";
 
 // Initialize AI on extension startup
 async function initializeAI() {

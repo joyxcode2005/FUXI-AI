@@ -90,8 +90,8 @@ Ensure valid JSON formatting and logically merged groups.
 export const helpMessage = `
 ## 📚 AI Commands
 
-- organize my tabs  
-- group tabs by topic  
+- \`organize my tabs\`  
+- \`group tabs by topic\`  
 
 ---
 
@@ -163,7 +163,7 @@ export async function renameGroup(oldTitle, newTitle) {
 }
 
 // Group existing tabs by IDs into a new group with specified title and color
-export async function groupExistingTabs(title, color = "blue") {
+export async function groupExistingTabs(title, color = "red") {
   const tabs = await chrome.tabs.query({ currentWindow: true });
   const groupableTabs = tabs.filter((tab) => {
     const url = tab.url || "";
@@ -176,9 +176,15 @@ export async function groupExistingTabs(title, color = "blue") {
   });
   if (groupableTabs.length === 0)
     return { success: false, error: "No groupable tabs found" };
+  
   const tabIds = groupableTabs.map((t) => t.id);
-  const groupId = chrome.tabs.group({ tabIds });
-  chrome.tabGroups.update(groupId, { title, color });
+  
+  // FIX: Add await here since chrome.tabs.group returns a Promise
+  const groupId = await chrome.tabs.group({ tabIds });
+  
+  // FIX: Add await here as well
+  await chrome.tabGroups.update(groupId, { title, color });
+  
   return { success: true, count: tabIds.length };
 }
 

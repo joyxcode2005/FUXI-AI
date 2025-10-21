@@ -38,6 +38,7 @@ export default function App() {
   const [enabled, setEnabled] = useState(true);
   const sessionRef = useRef(null);
   const chatEndRef = useRef(null);
+  const proofreaderRef = useRef(null);
 
   useEffect(() => {
     chrome.storage.local.get("autoGroupingEnabled", (data) => {
@@ -47,6 +48,7 @@ export default function App() {
 
   useEffect(() => {
     initializeAI();
+    initializeProofreaderAI();
     updateTabCount();
     const savedTheme = localStorage.getItem("tabManagerTheme");
     if (savedTheme) setIsDark(savedTheme === "dark");
@@ -112,6 +114,19 @@ export default function App() {
     } catch (err) {
       setAiStatus("error");
       addMessage(aiUnavailableMessage, "system");
+    }
+  };
+
+  const initializeProofreaderAI = async () => {
+    try {
+      if (typeof Proofreader !== "undefined") {
+        proofreaderRef.current = await Proofreader.create({
+          expectedInputLanguages: ["en"],
+        });
+        console.log("✅ Proofreader AI initialized");
+      }
+    } catch (error) {
+      console.error("❌ Proofreader AI initialization failed:", err);
     }
   };
 
@@ -268,13 +283,23 @@ export default function App() {
   };
 
   const handleSend = async () => {
-    const text = prompt.trim();
+    let text = prompt.trim();
     if (!text || loading) return;
     addMessage(text, "user");
     setPrompt("");
     setLoading(true);
 
+    // Using proofreader api to correct input
     try {
+      if (proofreaderRef.current) {
+        try {
+          const result = await proofreaderRef.current.proofread(text);
+          text = result.correctedInput;
+        } catch (err) {
+          console.warn("Proofreader failed:", err);
+        }
+      }
+
       const command = detectCommand(text);
 
       if (command.type === "help") {
@@ -409,7 +434,7 @@ export default function App() {
     // Main container
     <div
       className={`w-[500px] h-[600px] ${
-        isDark
+        isDark  
           ? "bg-gradient-to-br from-slate-900 via-gray-900 to-slate-900"
           : "bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50"
       } font-sans flex flex-col transition-all duration-500`}

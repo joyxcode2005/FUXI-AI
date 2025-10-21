@@ -40,12 +40,7 @@ export default function App() {
   const chatEndRef = useRef(null);
   const proofreaderRef = useRef(null);
 
-  useEffect(() => {
-    chrome.storage.local.get("autoGroupingEnabled", (data) => {
-      setEnabled(data.autoGroupingEnabled ?? true); // default ON
-    });
-  }, []);
-
+  // User effec to trigger on component mount
   useEffect(() => {
     initializeAI();
     initializeProofreaderAI();
@@ -55,20 +50,27 @@ export default function App() {
 
     // Check background service AI status
     checkBackgroundAIStatus();
+    chrome.storage.local.get("autoGroupingEnabled", (data) => {
+      setEnabled(data.autoGroupingEnabled ?? true); // default ON
+    });
   }, []);
 
+  // Scroll to bottom on new message
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // Save theme preference
   useEffect(() => {
     localStorage.setItem("tabManagerTheme", isDark ? "dark" : "light");
   }, [isDark]);
 
+  // Auto-handle help prompt
   useEffect(() => {
     if (prompt === "help") handleSend();
   }, [prompt]);
 
+  // Toggle auto-grouping feature
   const toggleFeature = () => {
     const newValue = !enabled;
     setEnabled(newValue);
@@ -93,6 +95,7 @@ export default function App() {
     }
   };
 
+  // Initialize AI session
   const initializeAI = async () => {
     try {
       if (typeof LanguageModel !== "undefined") {
@@ -117,6 +120,7 @@ export default function App() {
     }
   };
 
+  // Initialize Proofreader AI
   const initializeProofreaderAI = async () => {
     try {
       if (typeof Proofreader !== "undefined") {
@@ -130,6 +134,7 @@ export default function App() {
     }
   };
 
+  // Update tab count excluding special tabs
   const updateTabCount = async () => {
     try {
       const tabs = await chrome.tabs.query({ currentWindow: true });
@@ -148,15 +153,18 @@ export default function App() {
     }
   };
 
+  // Load groups from storage
   const loadGroups = async () => {
     const groupsList = await getAllGroups();
     setGroups(groupsList);
   };
 
+  // Add message to chat
   const addMessage = (text, sender) => {
     setMessages((prev) => [...prev, { text, sender, timestamp: Date.now() }]);
   };
 
+  // Get all tabs with filtering options
   const getAllTabs = async (includeGrouped = false) => {
     const tabs = await chrome.tabs.query({ currentWindow: true });
     return tabs
@@ -183,6 +191,7 @@ export default function App() {
       }));
   };
 
+  // Detect command from user input
   const detectCommand = (text) => {
     const lower = text.toLowerCase();
     if (lower === "help" || lower === "commands") return { type: "help" };
@@ -230,6 +239,7 @@ export default function App() {
     return { type: "chat" };
   };
 
+  // Ask AI to group tabs based on user request
   const askAIToGroupTabs = async (tabs, userRequest) => {
     if (!sessionRef.current) throw new Error("AI session not available");
     const tabsList = tabs
@@ -247,6 +257,7 @@ export default function App() {
     return parseAIResponse(response, tabs);
   };
 
+  // Handle ungrouping of tabs
   const handleUngroup = async (groupTitle) => {
     const result = await ungroupTabs(groupTitle);
     if (result.success) {
@@ -261,11 +272,13 @@ export default function App() {
     }
   };
 
+  // Handle renaming of group
   const handleRenameStart = (group) => {
     setRenamingGroup(group.title);
     setNewGroupName(group.title);
   };
 
+  // Submit rename group request
   const handleRenameSubmit = async (oldTitle) => {
     if (!newGroupName.trim() || newGroupName === oldTitle) {
       setRenamingGroup(null);
@@ -282,6 +295,7 @@ export default function App() {
     setNewGroupName("");
   };
 
+  // Handle sending user prompt
   const handleSend = async () => {
     let text = prompt.trim();
     if (!text || loading) return;
@@ -426,6 +440,7 @@ export default function App() {
     }
   };
 
+  // Handle help command
   const handleHelp = () => {
     setPrompt("help");
   };
@@ -434,7 +449,7 @@ export default function App() {
     // Main container
     <div
       className={`w-[500px] h-[600px] ${
-        isDark  
+        isDark
           ? "bg-gradient-to-br from-slate-900 via-gray-900 to-slate-900"
           : "bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50"
       } font-sans flex flex-col transition-all duration-500`}

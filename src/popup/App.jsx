@@ -22,7 +22,7 @@ import { SendHorizontal } from "lucide-react";
 import { Folder } from "lucide-react";
 import { Pencil } from "lucide-react";
 import { Trash2 } from "lucide-react";
-
+import ToggleButton from "../components/ToggleButton";
 
 export default function App() {
   const [loading, setLoading] = useState(false);
@@ -35,8 +35,15 @@ export default function App() {
   const [groups, setGroups] = useState([]);
   const [renamingGroup, setRenamingGroup] = useState(null);
   const [newGroupName, setNewGroupName] = useState("");
+  const [enabled, setEnabled] = useState(true);
   const sessionRef = useRef(null);
   const chatEndRef = useRef(null);
+
+  useEffect(() => {
+    chrome.storage.local.get("autoGroupingEnabled", (data) => {
+      setEnabled(data.autoGroupingEnabled ?? true); // default ON
+    });
+  }, []);
 
   useEffect(() => {
     initializeAI();
@@ -60,13 +67,24 @@ export default function App() {
     if (prompt === "help") handleSend();
   }, [prompt]);
 
+  const toggleFeature = () => {
+    const newValue = !enabled;
+    setEnabled(newValue);
+    chrome.storage.local.set({ autoGroupingEnabled: newValue });
+  };
+
   // Check AI status from background service
   const checkBackgroundAIStatus = async () => {
     try {
-      const response = await chrome.runtime.sendMessage({ action: "getAIStatus" });
+      const response = await chrome.runtime.sendMessage({
+        action: "getAIStatus",
+      });
       if (response && response.status === "ready") {
         setAiStatus("ready");
-        addMessage("✅ AI is running in the background and auto-organizing your tabs!", "system");
+        addMessage(
+          "✅ AI is running in the background and auto-organizing your tabs!",
+          "system"
+        );
       }
     } catch (err) {
       console.log("Background check failed:", err);
@@ -204,8 +222,9 @@ export default function App() {
         (tab) => `Tab ${tab.id}: "${tab.title}" - ${new URL(tab.url).hostname}`
       )
       .join("\n");
-    const response = await sessionRef.current.prompt(`Analyze ${tabs.length
-      } tabs and group them logically.
+    const response = await sessionRef.current.prompt(`Analyze ${
+      tabs.length
+    } tabs and group them logically.
       Tabs: ${tabsList}
       User wants: "${userRequest}"
       Respond with ONLY JSON: {"groups": {"Name": [ids]}, "explanation": "text"}
@@ -365,7 +384,9 @@ export default function App() {
 
   const quickOrganize = async () => {
     try {
-      const response = await chrome.runtime.sendMessage({ action: "organizeNow" });
+      const response = await chrome.runtime.sendMessage({
+        action: "organizeNow",
+      });
       if (response && response.success) {
         addMessage("✅ Background service is organizing your tabs!", "bot");
         setTimeout(async () => {
@@ -385,20 +406,26 @@ export default function App() {
   };
 
   return (
+    // Main container
     <div
-      className={`w-[500px] h-[600px] ${isDark
+      className={`w-[500px] h-[600px] ${
+        isDark
           ? "bg-gradient-to-br from-slate-900 via-gray-900 to-slate-900"
           : "bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50"
-        } font-sans flex flex-col transition-all duration-500`}
+      } font-sans flex flex-col transition-all duration-500`}
     >
+      {/* Header component  */}
       <div
-        className={`sticky top-0 h-40 px-6 py-4 ${isDark
+        className={`sticky top-0 h-40 px-6 py-4 ${
+          isDark
             ? "bg-gradient-to-tl from-gray-900/40 to-cyan-700/40 backdrop-blur-xl border-b border-white/10"
             : "bg-white/60 backdrop-blur-xl border-b border-indigo-200/50"
-          }`}
+        }`}
       >
-        <div className="relative flex items-start justify-between mb-4">
+        <div className="relative flex items-center justify-between mb-4">
+          {/* Left side title and badge  */}
           <div className="flex flex-col justify-between items-start ">
+            {/* Logo and Title  */}
             <div className="flex items-center justify-start w-[50vh] gap-4">
               <div
                 className={`w-11 h-11 rounded-2xl flex items-center justify-center text-2xl shadow-lg transform hover:scale-105 transition-transform text-black bg-gradient-to-bl from-amber-400 via-yellow-500 to-orange-600
@@ -408,52 +435,72 @@ export default function App() {
                 <BotMessageSquare />
               </div>
               <h3
-                className={`text-lg font-bold tracking-tight ${isDark ? "text-white" : "text-slate-900"
-                  }`}
+                className={`text-lg font-bold tracking-tight ${
+                  isDark ? "text-white" : "text-slate-900"
+                }`}
               >
                 AI TAB MANAGER
               </h3>
             </div>
-            <div>
-              <div className="flex items-center ml-13 w-[40vh] gap-2 mt-0.5">
-                {/* Ready badge that weather changes based on aiStatus */}
-                <div className="flex items-center justify-center gap-2 backdrop-blur-md px-4 py-1 rounded-xl">
-                  {aiStatus === "ready" ? (
-                    <span
-                      className={`${isDark ? "text-emerald-400" : "text-emerald-600"
-                        } font-bold`}
-                    >
-                      Auto-Active
-                    </span>
-                  ) : (
-                    <span
-                      className={`${isDark ? "text-slate-400" : "text-black"
-                        } font-bold`}
-                    >
-                      {aiStatus}
-                    </span>
-                  )}
-                </div>
-                <span
-                  className={`text-xs font-medium px-4 py-2 rounded-xl not-first: text-yellow-400 
-                    ${isDark ? "bg-transparent text-yell" : "bg-gray-200"}
+            {/* Lower badge component  */}
+            <div className="flex items-center ml-13 w-[40vh] gap-2 mt-0.5">
+              {/* Ready badge that weather changes based on aiStatus */}
+              <div
+                className={`flex items-center justify-center gap-2 backdrop-blur-md px-4 py-1 rounded-xl
+                ${isDark ? "bg-transparent text-yell" : "bg-gray-200"}
+                    backdrop-blur-xl
+                `}
+              >
+                {aiStatus === "ready" ? (
+                  <span
+                    className={`${
+                      isDark ? "text-emerald-400" : "text-emerald-600"
+                    } font-bold`}
+                  >
+                    Auto-Active
+                  </span>
+                ) : (
+                  <span
+                    className={`${
+                      isDark ? "text-slate-400" : "text-black"
+                    } font-bold`}
+                  >
+                    {aiStatus}
+                  </span>
+                )}
+              </div>
+              {/* Open Tab count  */}
+              <span
+                className={`text-xs font-semibold px-4 py-1 rounded-xl not-first:  
+                    ${
+                      isDark
+                        ? "bg-transparent text-orange-400"
+                        : "bg-gray-200 text-blue-800 "
+                    }
                     backdrop-blur-xl
                     `}
-                >
-                  {tabCount} Tabs Open
-                </span>
-              </div>
+              >
+                {tabCount} Tabs Open
+              </span>
             </div>
           </div>
-
-          <button
-            onClick={() => setIsDark(!isDark)}
-            className={`p-2 rounded-xl transition-all hover:scale-110 cursor-pointer ${isDark ? "text-yellow-300" : "text-slate-700"
+          {/* Right side theme and auto toggle button */}
+          <div className="w-35 flex items-center gap-5">
+            <ToggleButton
+              enabled={enabled}
+              onChange={toggleFeature}
+              isDark={isDark}
+            />
+            <button
+              onClick={() => setIsDark(!isDark)}
+              className={`p-2 rounded-xl transition-all hover:scale-110 cursor-pointer ${
+                isDark ? "text-yellow-300" : "text-slate-700"
               }`}
-            title="Toggle theme"
-          >
-            {isDark ? <Sun /> : <Moon />}
-          </button>
+              title="Toggle theme"
+            >
+              {isDark ? <Sun /> : <Moon />}
+            </button>
+          </div>
         </div>
 
         <div className="relative flex gap-2">
@@ -493,22 +540,23 @@ export default function App() {
             text="Help"
           />
         </div>
-
       </div>
 
       {showGroupManager ? (
         <div
-          className={`w-[500px] h-[600px] overflow-x-hidden ${isDark
-              ? "bg-gradient-to-br from-slate-900 via-gray-800 to-slate-900"
+          className={`w-[500px] h-[600px] overflow-x-hidden ${
+            isDark
+              ? "bg-gradient-to-br from-gray-900 via-cyan-900 to-black"
               : "bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50"
-            } font-sans flex flex-col transition-all duration-500`}
+          } font-sans flex flex-col transition-all duration-500`}
         >
           <div
             className={`flex justify-between items-center px-6 py-4 border-b border-slate-300/20 `}
           >
             <h3
-              className={`text-xl uppercase font-bold tracking-tight ${isDark ? "text-white" : "text-slate-900"
-                }`}
+              className={`text-xl uppercase font-bold tracking-tight ${
+                isDark ? "text-white" : "text-slate-900"
+              }`}
             >
               Tab Groups
             </h3>
@@ -522,8 +570,9 @@ export default function App() {
           </div>
 
           <div
-            className={`flex-1 overflow-y-auto px-6 py-5 ${isDark ? "" : "bg-white/30"
-              }`}
+            className={`flex-1 overflow-y-auto px-6 py-5 ${
+              isDark ? "" : "bg-white/30"
+            }`}
           >
             {groups.length === 0 ? (
               <div className="flex flex-col gap-2 items-center justify-center h-full">
@@ -531,8 +580,9 @@ export default function App() {
                   className={` ${isDark ? "text-white" : "text-black"}`}
                 />
                 <p
-                  className={`text-center text-lg font-bold mono ${isDark ? "text-slate-300" : "text-slate-600"
-                    }`}
+                  className={`text-center text-lg font-bold mono ${
+                    isDark ? "text-slate-300" : "text-slate-600"
+                  }`}
                 >
                   No groups yet. Create some!
                 </p>
@@ -555,10 +605,11 @@ export default function App() {
                               handleRenameSubmit(group.title);
                             if (e.key === "Escape") setRenamingGroup(null);
                           }}
-                          className={`flex-1 px-3 py-1.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 ${isDark
+                          className={`flex-1 px-3 py-1.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 ${
+                            isDark
                               ? "bg-slate-700 border border-slate-600 text-white "
                               : "bg-white border border-slate-300 text-slate-900"
-                            }`}
+                          }`}
                           autoFocus
                         />
                         <button
@@ -569,10 +620,11 @@ export default function App() {
                         </button>
                         <button
                           onClick={() => setRenamingGroup(null)}
-                          className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all cursor-pointer ${isDark
+                          className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
+                            isDark
                               ? "bg-slate-700 text-white hover:bg-slate-600"
                               : "bg-slate-200 text-slate-700 hover:bg-slate-300"
-                            }`}
+                          }`}
                         >
                           ✕
                         </button>
@@ -580,43 +632,47 @@ export default function App() {
                     ) : (
                       <>
                         <div
-                          className={`flex justify-between items-center p-4 rounded-2xl shadow-sm border transition-all ${isDark
+                          className={`flex justify-between items-center p-4 rounded-2xl shadow-sm border transition-all ${
+                            isDark
                               ? "bg-slate-800 border-slate-700 hover:border-slate-600"
                               : "bg-white border-slate-200 hover:border-slate-300"
-                            }`}
+                          }`}
                         >
                           <div className="flex items-start gap-3">
                             <div
-                              className={`w-3 h-3 mt-1 rounded-full ${group.color === "blue"
+                              className={`w-3 h-3 mt-1 rounded-full ${
+                                group.color === "blue"
                                   ? "bg-blue-500"
                                   : group.color === "red"
-                                    ? "bg-red-500"
-                                    : group.color === "yellow"
-                                      ? "bg-yellow-500"
-                                      : group.color === "green"
-                                        ? "bg-green-500"
-                                        : group.color === "pink"
-                                          ? "bg-pink-500"
-                                          : group.color === "purple"
-                                            ? "bg-purple-500"
-                                            : group.color === "cyan"
-                                              ? "bg-cyan-500"
-                                              : "bg-orange-500"
-                                }`}
+                                  ? "bg-red-500"
+                                  : group.color === "yellow"
+                                  ? "bg-yellow-500"
+                                  : group.color === "green"
+                                  ? "bg-green-500"
+                                  : group.color === "pink"
+                                  ? "bg-pink-500"
+                                  : group.color === "purple"
+                                  ? "bg-purple-500"
+                                  : group.color === "cyan"
+                                  ? "bg-cyan-500"
+                                  : "bg-orange-500"
+                              }`}
                             ></div>
 
                             <div className="flex flex-col">
                               <h4
-                                className={`font-semibold text-base leading-tight ${isDark ? "text-white" : "text-slate-900"
-                                  }`}
+                                className={`font-semibold text-base leading-tight ${
+                                  isDark ? "text-white" : "text-slate-900"
+                                }`}
                               >
                                 {group.title}
                               </h4>
                               <span
-                                className={`text-xs mt-1 px-2 py-0.5 rounded-md w-fit ${isDark
+                                className={`text-xs mt-1 px-2 py-0.5 rounded-md w-fit ${
+                                  isDark
                                     ? "bg-slate-700 text-slate-300"
                                     : "bg-slate-100 text-slate-600"
-                                  }`}
+                                }`}
                               >
                                 {group.tabCount}{" "}
                                 {group.tabCount === 1 ? "tab" : "tabs"}
@@ -627,20 +683,22 @@ export default function App() {
                           <div className="flex gap-2">
                             <button
                               onClick={() => handleRenameStart(group)}
-                              className={`p-2 rounded-lg transition-all hover:scale-110 cursor-pointer ${isDark
+                              className={`p-2 rounded-lg transition-all hover:scale-110 cursor-pointer ${
+                                isDark
                                   ? "bg-green-600/80 hover:bg-green-600 text-white"
                                   : "bg-green-500 hover:bg-green-600 text-white"
-                                }`}
+                              }`}
                             >
                               <Pencil size={16} />
                             </button>
 
                             <button
                               onClick={() => handleUngroup(group.title)}
-                              className={`p-2 rounded-lg transition-all hover:scale-110 cursor-pointer ${isDark
+                              className={`p-2 rounded-lg transition-all hover:scale-110 cursor-pointer ${
+                                isDark
                                   ? "bg-red-600/80 hover:bg-red-600 text-white"
                                   : "bg-red-500 hover:bg-red-600 text-white"
-                                }`}
+                              }`}
                             >
                               <Trash2 size={16} />
                             </button>
@@ -657,10 +715,11 @@ export default function App() {
       ) : (
         <>
           <div
-            className={`flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-3 ${isDark
+            className={`flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-3 ${
+              isDark
                 ? "bg-gradient-to-br from-gray-900 via-cyan-900 to-black"
                 : "bg-white/30"
-              }`}
+            }`}
           >
             {messages.map((msg, i) => {
               const isUser = msg.sender === "user";
@@ -685,10 +744,11 @@ export default function App() {
                 return (
                   <div key={i} className="flex justify-center animate-fade-in">
                     <div
-                      className={`px-4 py-2 rounded-full text-xs font-medium ${isDark
+                      className={`px-4 py-2 rounded-full text-xs font-medium ${
+                        isDark
                           ? "bg-indigo-500/20 text-indigo-200 border border-indigo-500/30"
                           : "bg-indigo-100 text-indigo-700 border border-indigo-200"
-                        }`}
+                      }`}
                     >
                       {msg.text}
                     </div>
@@ -701,10 +761,11 @@ export default function App() {
                   className="flex justify-start animate-slide-in-left"
                 >
                   <div
-                    className={`max-w-[90%] px-4 py-2 rounded-2xl rounded-tl-md shadow-md text-sm ${isDark
+                    className={`max-w-[90%] px-4 py-2 rounded-2xl rounded-tl-md shadow-md text-sm ${
+                      isDark
                         ? "bg-slate-800/80 text-slate-100 border border-slate-700/50"
                         : "bg-white text-slate-800 border border-slate-200"
-                      }`}
+                    }`}
                     style={{
                       wordWrap: "break-word",
                       whiteSpace: "preserve-breaks",
@@ -719,10 +780,11 @@ export default function App() {
             {loading && (
               <div className="flex justify-start animate-pulse">
                 <div
-                  className={`px-4 py-2.5 rounded-2xl rounded-tl-md flex items-center gap-2 text-sm ${isDark
+                  className={`px-4 py-2.5 rounded-2xl rounded-tl-md flex items-center gap-2 text-sm ${
+                    isDark
                       ? "bg-slate-800/80 text-slate-300 border border-slate-700/50"
                       : "bg-white text-slate-600 border border-slate-200"
-                    }`}
+                  }`}
                 >
                   <div className="flex gap-1">
                     <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce"></div>
@@ -744,10 +806,11 @@ export default function App() {
           </div>
 
           <div
-            className={`px-6 py-4 ${isDark
+            className={`px-6 py-4 ${
+              isDark
                 ? "bg-gradient-to-tl from-gray-900/40 to-cyan-700/40 backdrop-blur-xl border-b border-white/10"
                 : "bg-white/60 backdrop-blur-xl border-t border-indigo-200/50"
-              }`}
+            }`}
           >
             <div className="flex gap-2">
               <input
@@ -757,18 +820,20 @@ export default function App() {
                 onKeyDown={(e) => e.key === "Enter" && !loading && handleSend()}
                 placeholder="Ask me to organize your tabs..."
                 disabled={loading}
-                className={`flex-1 px-4 py-3 rounded-xl text-sm transition-all outline-none focus:ring-2 focus:ring-cyan-500 ${isDark
+                className={`flex-1 px-4 py-3 rounded-xl text-sm transition-all outline-none focus:ring-2 focus:ring-cyan-500 ${
+                  isDark
                     ? "bg-slate-800/50 border border-slate-700 text-white placeholder-slate-400 "
                     : "bg-white border border-slate-300 text-slate-900 placeholder-slate-400 "
-                  } ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
+                } ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
               />
               <button
                 onClick={handleSend}
                 disabled={loading || !prompt.trim()}
-                className={`px-5 py-3 rounded-xl font-semibold transition-all  ${loading || !prompt.trim()
+                className={`px-5 py-3 rounded-xl font-semibold transition-all  ${
+                  loading || !prompt.trim()
                     ? "bg-slate-400/30 text-slate-500 cursor-not-allowed"
                     : "bg-gradient-to-r from-green-500 to-green-600 cursor-pointer text-white hover:shadow-lg hover:scale-105"
-                  }`}
+                }`}
                 title="Send message"
               >
                 <span className="text-lg">
@@ -828,13 +893,15 @@ export default function App() {
           background: transparent;
         }
         .overflow-y-auto::-webkit-scrollbar-thumb {
-          background: ${isDark ? "rgba(139, 92, 246, 0.3)" : "rgba(99, 102, 241, 0.3)"
-        };
+          background: ${
+            isDark ? "rgba(139, 92, 246, 0.3)" : "rgba(99, 102, 241, 0.3)"
+          };
           border-radius: 10px;
         }
         .overflow-y-auto::-webkit-scrollbar-thumb:hover {
-          background: ${isDark ? "rgba(139, 92, 246, 0.5)" : "rgba(99, 102, 241, 0.5)"
-        };
+          background: ${
+            isDark ? "rgba(139, 92, 246, 0.5)" : "rgba(99, 102, 241, 0.5)"
+          };
         }
       `}</style>
     </div>

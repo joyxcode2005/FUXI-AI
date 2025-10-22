@@ -23,6 +23,7 @@ import { Folder } from "lucide-react";
 import { Pencil } from "lucide-react";
 import { Trash2 } from "lucide-react";
 import ToggleButton from "../components/ToggleButton";
+import LanguageDropdown from "../components/DropdownButton";
 
 export default function App() {
   const [loading, setLoading] = useState(false);
@@ -540,11 +541,17 @@ export default function App() {
               </span>
             </div>
           </div>
-          <div className="w-35 flex items-center gap-5">
+          <div className="w-52 flex items-center gap-4">
             <ToggleButton
               enabled={enabled}
               onChange={toggleFeature}
               isDark={isDark}
+            />
+            <LanguageDropdown
+              isDark={isDark}
+              onChange={(language) => {
+                chrome.storage.local.set({ preferredLanguage: language.code });
+              }}
             />
             <button
               onClick={() => setIsDark(!isDark)}

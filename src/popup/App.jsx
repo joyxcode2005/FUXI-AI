@@ -22,6 +22,7 @@ import { SendHorizontal } from "lucide-react";
 import { Folder } from "lucide-react";
 import { Pencil } from "lucide-react";
 import { Trash2 } from "lucide-react";
+import { Search } from "lucide-react";
 import ToggleButton from "../components/ToggleButton";
 
 export default function App() {
@@ -67,8 +68,13 @@ export default function App() {
     initializeAI();
     initializeProofreaderAI();
     updateTabCount();
-    const savedTheme = localStorage.getItem("tabManagerTheme");
-    if (savedTheme) setIsDark(savedTheme === "dark");
+    
+    // Load theme from chrome.storage.local
+    chrome.storage.local.get("tabManagerTheme", (data) => {
+      if (data.tabManagerTheme) {
+        setIsDark(data.tabManagerTheme === "dark");
+      }
+    });
 
     checkBackgroundAIStatus();
     chrome.storage.local.get("autoGroupingEnabled", (data) => {
@@ -83,7 +89,7 @@ export default function App() {
 
   // Save theme preference
   useEffect(() => {
-    localStorage.setItem("tabManagerTheme", isDark ? "dark" : "light");
+    chrome.storage.local.set({ tabManagerTheme: isDark ? "dark" : "light" });
   }, [isDark]);
 
   // Auto-handle help prompt
@@ -247,6 +253,18 @@ export default function App() {
       if (match) return { type: "groupAll", title: match[1].trim() };
     }
     if (
+      lower.startsWith("search ") ||
+      lower.startsWith("find ") ||
+      lower.startsWith("open ") ||
+      lower.startsWith("go to ") ||
+      lower.startsWith("switch to ")
+    ) {
+      const query = text
+        .replace(/^(search|find|open|go to|switch to)\s+/i, "")
+        .trim();
+      return { type: "search", query };
+    }
+    if (
       lower.includes("group") ||
       lower.includes("organize") ||
       lower.includes("categorize") ||
@@ -257,7 +275,246 @@ export default function App() {
     return { type: "chat" };
   };
 
-  // Ask AI to group tabs based on user request
+
+  // Search through tabs and switch to matching one (context-aware)
+  const searchTabs = async (query) => {
+    if (proofreaderRef.current) {
+        try {
+          const result = await proofreaderRef.current.proofread(query);
+          const query = result.correctedInput;
+        } catch (err) {
+          console.warn("Proofreader failed:", err);
+        }
+      } 
+    try {
+      const allTabs = await chrome.tabs.query({ currentWindow: true });
+      const validTabs = allTabs.filter((tab) => {
+        const url = tab.url || "";
+        return (
+          !url.startsWith("chrome://") &&
+          !url.startsWith("chrome-extension://") &&
+          !url.startsWith("edge://") &&
+          !url.startsWith("about:")
+        );
+      });
+
+      if (validTabs.length === 0) {
+        return { found: false, message: "❌ No tabs available to search" };
+      }
+
+      // Use AI for context-aware search
+      if (sessionRef.current && aiStatus === "ready") {
+        const tabsList = validTabs
+          .map(
+            (tab, idx) =>
+              `${idx + 1}. Title: "${tab.title}"\n   URL: ${tab.url}\n   ID: ${tab.id}`
+          )
+          .join("\n\n");
+
+        const aiPrompt = `You are a tab search assistant. The user is searching for: "${query}"
+
+Analyze these open tabs and find the BEST match based on context, content, and relevance:
+${tabsList}
+
+INSTRUCTIONS:
+
+1. **Understand the user's search intent and context**
+   - Determine if the query is looking for a specific item WITHIN a page (e.g., "mail from Spotify", "email about invoice")
+   - Or if it's looking for a general page type (e.g., "Gmail", "React docs")
+
+2. **Match based on priority hierarchy:**
+   
+   a) **Page Content Analysis (HIGHEST PRIORITY for specific searches)**
+      - For email searches: Check email subjects, sender names, and preview text
+      - For document searches: Check document titles, headings, and visible content
+      - For social media: Check post content, usernames mentioned
+      - Look for the SPECIFIC keyword/entity mentioned in the query within the page content
+   
+   b) **URL and Path Matching**
+      - Project names in URLs (e.g., github.com/user/project-name)
+      - URL paths and parameters that indicate content type
+      - Domain relevance to query
+   
+   c) **Page Title Matching**
+      - Keywords in page titles
+      - Context from title structure
+   
+   d) **Overall Context**
+      - What type of page it is (email client, docs, social media, etc.)
+      - Semantic similarity to query intent
+
+3. **Special handling for content-specific searches:**
+   - If query contains phrases like "mail about/from/for", "email with", "message from", etc.:
+     * Prioritize tabs that are email clients (Gmail, Outlook, etc.)
+     * Then look INSIDE the email content for matches to the specific keyword
+     * Match the tab where that specific email/content is visible or likely to be found
+   
+   - If query contains "document about", "page with", "article on":
+     * Look for the specific topic within the page content/headings
+     * Don't just match the page type, match the content topic
+
+4. **Matching strategies:**
+   - Use semantic similarity, not just keyword matching
+   - If searching for a specific project/repo, match the exact project name in the URL
+   - If searching for content within a page type, verify that specific content exists
+   - Consider query context: "mail for X" means find X in emails, not just open any email tab
+
+5. **Examples:**
+   - "react docs" → Match official React documentation, not a blog about React
+   - "my todo app" → Match github.com/username/todo-app, not a generic todo list
+   - "python tutorial" → Match a Python learning page, not Python library docs
+   - "netflix" → Match the Netflix streaming site, not an article about Netflix
+   - **"mail from Spotify"** → Match Gmail/email tab that contains email from Spotify in subject/sender, not just any Gmail tab
+   - **"email about invoice"** → Match email tab with "invoice" in email subjects/content
+   - **"tweet about AI"** → Match Twitter/X tab with AI-related tweets visible, not just any Twitter tab
+
+6. **Confidence scoring:**
+   - HIGH: Exact match found in content, URL, or title as intended by query
+   - MEDIUM: Relevant page type found but specific content match uncertain
+   - LOW: Weak correlation, might be what user wants
+   - NONE: No relevant match
+
+Respond with ONLY valid JSON in this format:
+{
+  "matchIndex": <number 1-${validTabs.length}>,
+  "confidence": <"high" | "medium" | "low">,
+  "reason": "Brief explanation of why this tab matches (mention specific content found if applicable)",
+  "alternativeMatches": [<array of other possible match indices>]
+}
+
+If NO good match exists, respond with:
+{
+  "matchIndex": null,
+  "confidence": "none",
+  "reason": "No relevant tabs found",
+  "alternativeMatches": []
+}`;
+
+        try {
+          addMessage("🔍 Searching through tabs...", "system");
+          const response = await sessionRef.current.prompt(aiPrompt);
+          console.log("AI Search Response:", response);
+
+          // Parse AI response
+          const jsonMatch = response.match(/\{[\s\S]*\}/);
+          if (!jsonMatch) {
+            throw new Error("Invalid AI response format");
+          }
+
+          const result = JSON.parse(jsonMatch[0]);
+
+          if (!result.matchIndex || result.confidence === "none") {
+            // No good match found
+            const lowerQuery = query.toLowerCase();
+            const fallbackMatches = validTabs.filter((tab) => {
+              const title = (tab.title || "").toLowerCase();
+              const url = (tab.url || "").toLowerCase();
+              return title.includes(lowerQuery) || url.includes(lowerQuery);
+            });
+
+            if (fallbackMatches.length > 0) {
+              const matchList = fallbackMatches
+                .slice(0, 5)
+                .map((tab) => `• ${tab.title}`)
+                .join("\n");
+              return {
+                found: false,
+                message: `⚠️ No strong contextual match found for "${query}"\n\nDid you mean one of these?\n${matchList}`,
+              };
+            }
+
+            return {
+              found: false,
+              message: `❌ No tabs found matching "${query}"\n\n💡 Tip: Try searching by page content, project name, or topic`,
+            };
+          }
+
+          // Valid match found
+          const matchIndex = result.matchIndex - 1; // Convert to 0-based index
+          if (matchIndex < 0 || matchIndex >= validTabs.length) {
+            throw new Error("Invalid match index from AI");
+          }
+
+          const matchedTab = validTabs[matchIndex];
+          await chrome.tabs.update(matchedTab.id, { active: true });
+          await chrome.windows.update(matchedTab.windowId, { focused: true });
+
+          let message = `✅ **Found and switched to:**\n"${matchedTab.title}"\n\n`;
+          message += `🎯 **Confidence:** ${result.confidence}\n`;
+          message += `💡 **Why:** ${result.reason}`;
+
+          // Show alternative matches if any
+          if (
+            result.alternativeMatches &&
+            result.alternativeMatches.length > 0
+          ) {
+            const alternatives = result.alternativeMatches
+              .slice(0, 3)
+              .map((idx) => {
+                const altTab = validTabs[idx - 1];
+                return altTab ? `• ${altTab.title}` : null;
+              })
+              .filter(Boolean)
+              .join("\n");
+
+            if (alternatives) {
+              message += `\n\n**Other possible matches:**\n${alternatives}`;
+            }
+          }
+
+          return {
+            found: true,
+            message,
+            count: 1,
+          };
+        } catch (err) {
+          console.error("AI search failed:", err);
+          // Fall through to keyword-based fallback
+        }
+      }
+
+      // Fallback: Simple keyword search (when AI unavailable)
+      const lowerQuery = query.toLowerCase();
+      const matches = validTabs.filter((tab) => {
+        const title = (tab.title || "").toLowerCase();
+        const url = (tab.url || "").toLowerCase();
+        return title.includes(lowerQuery) || url.includes(lowerQuery);
+      });
+
+      if (matches.length === 0) {
+        return {
+          found: false,
+          message: `❌ No tabs found matching "${query}"\n\n💡 Tip: AI search is unavailable. Try exact keywords from tab titles.`,
+        };
+      }
+
+      if (matches.length === 1) {
+        await chrome.tabs.update(matches[0].id, { active: true });
+        await chrome.windows.update(matches[0].windowId, { focused: true });
+        return {
+          found: true,
+          message: `✅ Switched to: "${matches[0].title}"`,
+          count: 1,
+        };
+      }
+
+      // Multiple matches - switch to first
+      await chrome.tabs.update(matches[0].id, { active: true });
+      await chrome.windows.update(matches[0].windowId, { focused: true });
+
+      const matchList = matches
+        .slice(0, 5)
+        .map((tab) => `• ${tab.title}`)
+        .join("\n");
+      return {
+        found: true,
+        message: `✅ Found ${matches.length} matches. Switched to:\n"${matches[0].title}"\n\n**Other matches:**\n${matchList}\n\n💡 Enable AI for smarter context-aware search`,
+        count: matches.length,
+      };
+    } catch (err) {
+      return { found: false, message: `❌ Error: ${err.message}` };
+    }
+  };
   const askAIToGroupTabs = async (tabs, userRequest) => {
     if (!sessionRef.current) throw new Error("AI session not available");
     const tabsList = tabs
@@ -340,6 +597,13 @@ export default function App() {
         return;
       }
 
+      if (command.type === "search") {
+        const result = await searchTabs(command.query);
+        setLoading(false);
+        addMessage(result.message, "bot");
+        return;
+      }
+
       if (command.type === "listGroups") {
         await loadGroups();
         setLoading(false);
@@ -410,12 +674,15 @@ export default function App() {
         const result = await createMultipleGroups(aiResult.groups);
         setLoading(false);
         if (result.success) {
-          addMessage(
-            `✅ Created ${result.groupsCreated} groups!\n\n${result.groups
-              .map((n) => `• ${n}`)
-              .join("\n")}`,
-            "bot"
-          );
+          let message = "";
+          if (result.groupsCreated > 0 && result.tabsAddedToExisting > 0) {
+            message = `✅ Created ${result.groupsCreated} new group(s) and added ${result.tabsAddedToExisting} tab(s) to existing groups!\n\n${result.groups.map((n) => `• ${n}`).join("\n")}`;
+          } else if (result.groupsCreated > 0) {
+            message = `✅ Created ${result.groupsCreated} groups!\n\n${result.groups.map((n) => `• ${n}`).join("\n")}`;
+          } else if (result.tabsAddedToExisting > 0) {
+            message = `✅ Added ${result.tabsAddedToExisting} tab(s) to existing groups!`;
+          }
+          addMessage(message, "bot");
           await updateTabCount();
           await loadGroups();
           setShowGroupManager(true);
@@ -892,7 +1159,7 @@ export default function App() {
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && !loading && handleSend()}
-                placeholder="Ask me to organize your tabs..."
+                placeholder="Ask me to organize your tabs or search for one..."
                 disabled={loading}
                 className={`flex-1 px-4 py-3 rounded-xl text-sm transition-all outline-none focus:ring-2 focus:ring-cyan-500 ${
                   isDark

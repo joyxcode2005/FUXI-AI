@@ -34,7 +34,7 @@ GROUPING PRINCIPLES
 
 3. **Naming Rules**
    - Use concise, descriptive names (e.g., "AI Tools", "Tech News", "Social Media").
-   - Avoid duplicates (e.g., no “Social Media 2”).
+   - Avoid duplicates (e.g., no "Social Media 2").
    - Prefer concept-based names over brand names unless all tabs share it.
 
 4. **Semantic Grouping**
@@ -44,8 +44,8 @@ GROUPING PRINCIPLES
 5. **Decision Hierarchy**
    - Prioritize grouping by **topic > platform > content type**.
    - Example:
-     - YouTube React tutorials → “React Tutorials”
-     - OpenAI API docs → “AI Tools”
+     - YouTube React tutorials → "React Tutorials"
+     - OpenAI API docs → "AI Tools"
 
 ====================
 DOMAIN-SPECIFIC RULES
@@ -73,8 +73,8 @@ MERGING & EFFICIENCY
 FALLBACK RULES
 ====================
 - If a tab does not fit any known or existing group:
-  • Infer from title keywords ("blog", "career", "job", "article") → “Tech News” or “Articles”.
-  • Otherwise, create a simple, clear group name (e.g., “Reading”, “Research”).
+  • Infer from title keywords ("blog", "career", "job", "article") → "Tech News" or "Articles".
+  • Otherwise, create a simple, clear group name (e.g., "Reading", "Research").
 
 ====================
 EXPLANATION FIELD
@@ -135,6 +135,28 @@ export async function getAllGroups() {
   return groupsWithTabs;
 }
 
+// Get existing groups with full details (for smart grouping)
+export async function getExistingGroupsWithTabs() {
+  const groups = await chrome.tabGroups.query({});
+  const groupsWithTabs = await Promise.all(
+    groups.map(async (g) => {
+      const tabs = await chrome.tabs.query({ groupId: g.id });
+      return {
+        id: g.id,
+        title: g.title || "Untitled",
+        color: g.color,
+        tabIds: tabs.map(t => t.id),
+        tabs: tabs.map(t => ({
+          id: t.id,
+          title: t.title,
+          url: t.url
+        }))
+      };
+    })
+  );
+  return groupsWithTabs;
+}
+
 // Ungroup tabs from a specified group title
 export async function ungroupTabs(title) {
   const groups = await chrome.tabGroups.query({});
@@ -179,10 +201,7 @@ export async function groupExistingTabs(title, color = "red") {
   
   const tabIds = groupableTabs.map((t) => t.id);
   
-  // FIX: Add await here since chrome.tabs.group returns a Promise
   const groupId = await chrome.tabs.group({ tabIds });
-  
-  // FIX: Add await here as well
   await chrome.tabGroups.update(groupId, { title, color });
   
   return { success: true, count: tabIds.length };
@@ -197,7 +216,7 @@ async function validateTabIds(tabIds) {
     .filter((id) => !isNaN(id) && validTabIds.includes(id));
 }
 
-// Create multiple tab groups based on provided grouped tab IDs
+// Create multiple tab groups based on provided grouped tab IDs (enhanced with merging)
 export async function createMultipleGroups(groupedTabs) {
   const colors = [
     "blue",
@@ -211,25 +230,50 @@ export async function createMultipleGroups(groupedTabs) {
   ];
   let colorIndex = 0;
   const successfulGroups = [];
+  let tabsAddedToExisting = 0;
 
   try {
+    // Get existing groups
+    const existingGroups = await getExistingGroupsWithTabs();
+    const existingGroupMap = new Map();
+    existingGroups.forEach(g => {
+      existingGroupMap.set(g.title.toLowerCase(), g);
+    });
+
     for (const [groupName, tabIds] of Object.entries(groupedTabs)) {
       if (tabIds.length > 0) {
         const validIds = await validateTabIds(tabIds);
         if (validIds.length === 0) continue;
-        const groupId = await chrome.tabs.group({ tabIds: validIds });
-        chrome.tabGroups.update(groupId, {
-          title: groupName,
-          color: colors[colorIndex % colors.length],
-        });
-        successfulGroups.push(groupName);
-        colorIndex++;
+
+        // Check if this group already exists
+        const existingGroup = existingGroupMap.get(groupName.toLowerCase());
+
+        if (existingGroup) {
+          // Add to existing group
+          await chrome.tabs.group({ 
+            groupId: existingGroup.id, 
+            tabIds: validIds 
+          });
+          tabsAddedToExisting += validIds.length;
+          console.log(`✅ Added ${validIds.length} tab(s) to existing group: ${groupName}`);
+        } else {
+          // Create new group
+          const groupId = await chrome.tabs.group({ tabIds: validIds });
+          chrome.tabGroups.update(groupId, {
+            title: groupName,
+            color: colors[colorIndex % colors.length],
+          });
+          successfulGroups.push(groupName);
+          colorIndex++;
+        }
       }
     }
+
     return {
       success: true,
       groupsCreated: successfulGroups.length,
       groups: successfulGroups,
+      tabsAddedToExisting
     };
   } catch (error) {
     return { success: false, error: error.message };
@@ -259,5 +303,3 @@ export const parseAIResponse = (response, tabs) => {
     return { valid: false, error: err.message };
   }
 };
-
-

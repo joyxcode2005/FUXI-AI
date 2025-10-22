@@ -40,15 +40,37 @@ export default function App() {
   const chatEndRef = useRef(null);
   const proofreaderRef = useRef(null);
 
-  // User effec to trigger on component mount
   useEffect(() => {
+    chrome.storage.local.get("autoGroupingEnabled", (data) => {
+      setEnabled(data.autoGroupingEnabled ?? true);
+    });
+  }, []);
+
+
+  // User effect to trigger on component mount
+  useEffect(() => {
+    // Load persisted messages from Chrome storage
+    chrome.storage.local.get("chatMessages", (data) => {
+      if (data.chatMessages && Array.isArray(data.chatMessages)) {
+        setMessages(data.chatMessages);
+      } else {
+        // Only add welcome message if no chat history exists
+        setMessages([
+          {
+            text: "👋 Welcome to AI Tab Manager! Type 'help' to see what I can do.",
+            sender: "system",
+            timestamp: Date.now(),
+          },
+        ]);
+      }
+    });
+
     initializeAI();
     initializeProofreaderAI();
     updateTabCount();
     const savedTheme = localStorage.getItem("tabManagerTheme");
     if (savedTheme) setIsDark(savedTheme === "dark");
 
-    // Check background service AI status
     checkBackgroundAIStatus();
     chrome.storage.local.get("autoGroupingEnabled", (data) => {
       setEnabled(data.autoGroupingEnabled ?? true); // default ON
@@ -77,7 +99,6 @@ export default function App() {
     chrome.storage.local.set({ autoGroupingEnabled: newValue });
   };
 
-  // Check AI status from background service
   const checkBackgroundAIStatus = async () => {
     try {
       const response = await chrome.runtime.sendMessage({
@@ -85,10 +106,6 @@ export default function App() {
       });
       if (response && response.status === "ready") {
         setAiStatus("ready");
-        addMessage(
-          "✅ AI is running in the background and auto-organizing your tabs!",
-          "system"
-        );
       }
     } catch (err) {
       console.log("Background check failed:", err);
@@ -105,14 +122,11 @@ export default function App() {
             systemPrompt: systemPrompt,
           });
           setAiStatus("ready");
-          addMessage(aiReadyMessage, "system");
         } else {
           setAiStatus("unavailable");
-          addMessage(aiUnavailableMessage, "system");
         }
       } else {
         setAiStatus("unavailable");
-        addMessage(aiUnavailableMessage, "system");
       }
     } catch (err) {
       setAiStatus("error");
@@ -161,7 +175,12 @@ export default function App() {
 
   // Add message to chat
   const addMessage = (text, sender) => {
-    setMessages((prev) => [...prev, { text, sender, timestamp: Date.now() }]);
+    setMessages((prev) => {
+      const newMessages = [...prev, { text, sender, timestamp: Date.now() }];
+      // Save messages to Chrome storage for persistence
+      chrome.storage.local.set({ chatMessages: newMessages });
+      return newMessages;
+    });
   };
 
   // Get all tabs with filtering options
@@ -446,7 +465,6 @@ export default function App() {
   };
 
   return (
-    // Main container
     <div
       className={`w-[500px] h-[600px] ${
         isDark
@@ -454,7 +472,6 @@ export default function App() {
           : "bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50"
       } font-sans flex flex-col transition-all duration-500`}
     >
-      {/* Header component  */}
       <div
         className={`sticky top-0 h-40 px-6 py-4 ${
           isDark
@@ -463,9 +480,7 @@ export default function App() {
         }`}
       >
         <div className="relative flex items-center justify-between mb-4">
-          {/* Left side title and badge  */}
           <div className="flex flex-col justify-between items-start ">
-            {/* Logo and Title  */}
             <div className="flex items-center justify-start w-[50vh] gap-4">
               <div
                 className={`w-11 h-11 rounded-2xl flex items-center justify-center text-2xl shadow-lg transform hover:scale-105 transition-transform text-black bg-gradient-to-bl from-amber-400 via-yellow-500 to-orange-600
@@ -482,9 +497,7 @@ export default function App() {
                 AI TAB MANAGER
               </h3>
             </div>
-            {/* Lower badge component  */}
             <div className="flex items-center ml-13 w-[40vh] gap-2 mt-0.5">
-              {/* Ready badge that weather changes based on aiStatus */}
               <div
                 className={`flex items-center justify-center gap-2 backdrop-blur-md px-4 py-1 rounded-xl
                 ${isDark ? "bg-transparent text-yell" : "bg-gray-200"}
@@ -509,7 +522,6 @@ export default function App() {
                   </span>
                 )}
               </div>
-              {/* Open Tab count  */}
               <span
                 className={`text-xs font-semibold px-4 py-1 rounded-xl not-first:  
                     ${
@@ -524,7 +536,6 @@ export default function App() {
               </span>
             </div>
           </div>
-          {/* Right side theme and auto toggle button */}
           <div className="w-35 flex items-center gap-5">
             <ToggleButton
               enabled={enabled}
@@ -567,11 +578,10 @@ export default function App() {
 
           <Button
             onClick={() => {
-              setShowGroupManager(false); // redirect to chat
-              handleHelp(); // then trigger help message
+              setShowGroupManager(false);
+              handleHelp();
               setTimeout(() => {
                 chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-                inputRef?.current?.focus?.();
               }, 50);
             }}
             disabled={loading}

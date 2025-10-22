@@ -46,7 +46,6 @@ export default function App() {
     });
   }, []);
 
-
   // User effect to trigger on component mount
   useEffect(() => {
     // Load persisted messages from Chrome storage
@@ -464,6 +463,12 @@ export default function App() {
     setPrompt("help");
   };
 
+  // Clear chat history
+  const clearChat = () => {
+    setMessages([]);
+    chrome.storage.local.remove("chatMessages");
+  };
+
   return (
     <div
       className={`w-[500px] h-[600px] ${
@@ -484,7 +489,6 @@ export default function App() {
             <div className="flex items-center justify-start w-[50vh] gap-4">
               <div
                 className={`w-11 h-11 rounded-2xl flex items-center justify-center text-2xl shadow-lg transform hover:scale-105 transition-transform text-black bg-gradient-to-bl from-amber-400 via-yellow-500 to-orange-600
-                ${isDark ? "text-white" : "text-black"}
                 `}
               >
                 <BotMessageSquare />
@@ -523,11 +527,11 @@ export default function App() {
                 )}
               </div>
               <span
-                className={`text-xs font-semibold px-4 py-1 rounded-xl not-first:  
+                className={`text-xs font-bold px-4 py-1 rounded-xl not-first:  
                     ${
                       isDark
-                        ? "bg-transparent text-orange-400"
-                        : "bg-gray-200 text-blue-800 "
+                        ? "bg-transparent text-yellow-500"
+                        : "bg-gray-200 text-red-400"
                     }
                     backdrop-blur-xl
                     `}
@@ -588,6 +592,20 @@ export default function App() {
             isDark={isDark}
             icon={MessageCircleQuestionMark}
             text="Help"
+          />
+          <Button
+            onClick={async () => quickOrganize()}
+            disabled={loading}
+            isDark={isDark}
+            icon={BotMessageSquare}
+            text="Organize Now"
+          />
+          <Button
+            onClick={clearChat}
+            disabled={loading}
+            isDark={isDark}
+            icon={Trash2}
+            text="Clear Chat"
           />
         </div>
       </div>
@@ -782,7 +800,13 @@ export default function App() {
                     className="flex justify-end animate-slide-in-right"
                   >
                     <div
-                      className="max-w-[15rem] px-4 py-2.5 rounded-2xl rounded-tr-md bg-gradient-to-br from-purple-500 to-indigo-600 text-white shadow-lg text-sm leading-relaxed"
+                      className={`max-w-[15rem] px-4 py-2.5 rounded-2xl rounded-tr-md shadow-lg text-sm leading-relaxed font-semibold
+                        ${
+                          isDark
+                            ? "bg-gradient-to-bl from-green-600 to-cyan-800 text-white border border-purple-500/30"
+                            : "bg-gradient-to-bl from-white to-cyan-100 text-slate-900 border border-indigo-200"
+                        }
+                        `}
                       style={{ wordWrap: "break-word" }}
                     >
                       {msg.text}

@@ -323,8 +323,8 @@ async function createMultipleGroups(groupedTabs) {
 }
 
 // 🧠 Main organization logic
-async function organizeExistingTabs() {
-  if (!autoGroupingEnabled) {
+async function organizeExistingTabs(force = false) {
+  if (!force && !autoGroupingEnabled) {
     console.log("⏸️ Auto grouping turned off, skipping organization.");
     return;
   }
@@ -349,14 +349,14 @@ async function organizeExistingTabs() {
         console.log("Grouping strategy:", aiResult.explanation);
         const result = await createMultipleGroups(aiResult.groups);
         if (result.success)
-          console.log(`✅ Auto-organized ${result.groupsCreated} groups`);
+          console.log(`✅ Organized ${result.groupsCreated} groups`);
         else console.error("Failed to create groups:", result.error);
       }
     } else {
       console.log("✓ No ungrouped tabs found");
     }
   } catch (err) {
-    console.error("Auto-organize error:", err);
+    console.error("Organize error:", err);
   } finally {
     isProcessing = false;
   }
@@ -404,7 +404,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === "organizeNow") {
-    organizeExistingTabs()
+    organizeExistingTabs(true)
       .then(() => sendResponse({ success: true }))
       .catch((err) => sendResponse({ success: false, error: err.message }));
     return true;

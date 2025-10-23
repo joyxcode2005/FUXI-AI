@@ -22,11 +22,18 @@ import { SendHorizontal } from "lucide-react";
 import { Folder } from "lucide-react";
 import { Pencil } from "lucide-react";
 import { Trash2 } from "lucide-react";
-import { Search } from "lucide-react";
 import ToggleButton from "../components/ToggleButton";
 import LanguageDropdown from "../components/DropdownButton";
 
 export default function App() {
+  const [title, setTitle] = useState("AI TABS");
+  const [active, setActive] = useState("Auto-Active");
+  const [tabsText, setTabsText] = useState("Tabs Open");
+  const [group, setGroup] = useState("Groups");
+  const [help, setHelp] = useState("Help");
+  const [organise, setOrganise] = useState("Organise Now");
+  const [clear, setClear] = useState("Clear Chat");
+
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState([]);
   const [prompt, setPrompt] = useState("");
@@ -38,9 +45,11 @@ export default function App() {
   const [renamingGroup, setRenamingGroup] = useState(null);
   const [newGroupName, setNewGroupName] = useState("");
   const [enabled, setEnabled] = useState(true);
+  const [language, setLanguage] = useState("en");
   const sessionRef = useRef(null);
   const chatEndRef = useRef(null);
   const proofreaderRef = useRef(null);
+  const languageChangeSessionRef = useRef(null);
 
   useEffect(() => {
     chrome.storage.local.get("autoGroupingEnabled", (data) => {
@@ -69,7 +78,7 @@ export default function App() {
     initializeAI();
     initializeProofreaderAI();
     updateTabCount();
-    
+
     // Load theme from chrome.storage.local
     chrome.storage.local.get("tabManagerTheme", (data) => {
       if (data.tabManagerTheme) {
@@ -97,6 +106,36 @@ export default function App() {
   useEffect(() => {
     if (prompt === "help") handleSend();
   }, [prompt]);
+
+  // Handle language change
+  const onChangeLanguage = async (lang) => {
+    setLanguage(lang);
+    await initializeLanguageChangeAI(lang);
+    try {
+      if (languageChangeSessionRef.current) {
+        setTitle(
+          await languageChangeSessionRef.current.translate("AI TAB MANAGER")
+        );
+
+        setActive(
+          await languageChangeSessionRef.current.translate("Auto-Active")
+        );
+        setTabsText(
+          await languageChangeSessionRef.current.translate("Tabs Open")
+        );
+        setGroup(await languageChangeSessionRef.current.translate("Groups"));
+        setHelp(await languageChangeSessionRef.current.translate("Help"));
+        setOrganise(
+          await languageChangeSessionRef.current.translate("Organise Now")
+        );
+        setClear(
+          await languageChangeSessionRef.current.translate("Clear Chat")
+        );
+      }
+    } catch (error) {
+      console.error("Language change failed:", error);
+    }
+  };
 
   // Toggle auto-grouping feature
   const toggleFeature = () => {
@@ -151,6 +190,21 @@ export default function App() {
       }
     } catch (error) {
       console.error("❌ Proofreader AI initialization failed:", err);
+    }
+  };
+
+  // Initalize language change AI
+  const initializeLanguageChangeAI = async (language) => {
+    try {
+      if (typeof Translator !== "undefined") {
+        languageChangeSessionRef.current = await Translator.create({
+          sourceLanguage: "en",
+          targetLanguage: language.code,
+        });
+        console.log("✅ Language Change AI initialized");
+      }
+    } catch (error) {
+      console.error("❌ Language Change AI initialization failed:", err);
     }
   };
 
@@ -276,17 +330,16 @@ export default function App() {
     return { type: "chat" };
   };
 
-
   // Search through tabs and switch to matching one (context-aware)
   const searchTabs = async (query) => {
     if (proofreaderRef.current) {
-        try {
-          const result = await proofreaderRef.current.proofread(query);
-          const query = result.correctedInput;
-        } catch (err) {
-          console.warn("Proofreader failed:", err);
-        }
-      } 
+      try {
+        const result = await proofreaderRef.current.proofread(query);
+        const query = result.correctedInput;
+      } catch (err) {
+        console.warn("Proofreader failed:", err);
+      }
+    }
     try {
       const allTabs = await chrome.tabs.query({ currentWindow: true });
       const validTabs = allTabs.filter((tab) => {
@@ -308,7 +361,9 @@ export default function App() {
         const tabsList = validTabs
           .map(
             (tab, idx) =>
-              `${idx + 1}. Title: "${tab.title}"\n   URL: ${tab.url}\n   ID: ${tab.id}`
+              `${idx + 1}. Title: "${tab.title}"\n   URL: ${tab.url}\n   ID: ${
+                tab.id
+              }`
           )
           .join("\n\n");
 
@@ -516,6 +571,7 @@ If NO good match exists, respond with:
       return { found: false, message: `❌ Error: ${err.message}` };
     }
   };
+
   const askAIToGroupTabs = async (tabs, userRequest) => {
     if (!sessionRef.current) throw new Error("AI session not available");
     const tabsList = tabs
@@ -523,14 +579,14 @@ If NO good match exists, respond with:
         (tab) => `Tab ${tab.id}: "${tab.title}" - ${new URL(tab.url).hostname}`
       )
       .join("\n");
-    const response = await sessionRef.current.prompt(`Analyze ${
-      tabs.length
-    } tabs and group them logically.
-      Tabs: ${tabsList}
-      User wants: "${userRequest}"
-      Respond with ONLY JSON: {"groups": {"Name": [ids]}, "explanation": "text"}
-      All IDs: ${tabs.map((t) => t.id).join(", ")}`);
-    return parseAIResponse(response, tabs);
+      const response = await sessionRef.current.prompt(`Analyze ${
+        tabs.length
+      } tabs and group them logically.
+        Tabs: ${tabsList}
+        User wants: "${userRequest}"
+        Respond with ONLY JSON: {"groups": {"Name": [ids]}, "explanation": "text"}
+        All IDs: ${tabs.map((t) => t.id).join(", ")}`);
+      return parseAIResponse(response, tabs);
   };
 
   // Handle ungrouping of tabs
@@ -677,9 +733,17 @@ If NO good match exists, respond with:
         if (result.success) {
           let message = "";
           if (result.groupsCreated > 0 && result.tabsAddedToExisting > 0) {
-            message = `✅ Created ${result.groupsCreated} new group(s) and added ${result.tabsAddedToExisting} tab(s) to existing groups!\n\n${result.groups.map((n) => `• ${n}`).join("\n")}`;
+            message = `✅ Created ${
+              result.groupsCreated
+            } new group(s) and added ${
+              result.tabsAddedToExisting
+            } tab(s) to existing groups!\n\n${result.groups
+              .map((n) => `• ${n}`)
+              .join("\n")}`;
           } else if (result.groupsCreated > 0) {
-            message = `✅ Created ${result.groupsCreated} groups!\n\n${result.groups.map((n) => `• ${n}`).join("\n")}`;
+            message = `✅ Created ${
+              result.groupsCreated
+            } groups!\n\n${result.groups.map((n) => `• ${n}`).join("\n")}`;
           } else if (result.tabsAddedToExisting > 0) {
             message = `✅ Added ${result.tabsAddedToExisting} tab(s) to existing groups!`;
           }
@@ -737,6 +801,38 @@ If NO good match exists, respond with:
     chrome.storage.local.remove("chatMessages");
   };
 
+  function TranslatedText({ msg }) {
+    const [translated, setTranslated] = useState("");
+
+    useEffect(() => {
+      // Skip if message text not ready yet
+      if (!msg?.text) return;
+
+      let isCancelled = false; // to prevent race conditions
+
+      (async () => {
+        try {
+          const result = await languageChangeSessionRef.current.translate(
+            msg.text
+          );
+          if (!isCancelled) setTranslated(result);
+        } catch (err) {
+          console.error("Translation error:", err);
+        }
+      })();
+
+      // Cleanup if component unmounts
+      return () => {
+        isCancelled = true;
+      };
+    }, [msg?.text]);
+
+    return <div>{translated || msg?.text || "..."}</div>;
+  }
+  
+
+  console.log("Selected Language:", language.name);
+
   return (
     <div
       className={`w-[500px] h-[600px] ${
@@ -766,7 +862,7 @@ If NO good match exists, respond with:
                   isDark ? "text-white" : "text-slate-900"
                 }`}
               >
-                AI TAB MANAGER
+                {title}
               </h3>
             </div>
             <div className="flex items-center ml-13 w-[40vh] gap-2 mt-0.5">
@@ -782,7 +878,7 @@ If NO good match exists, respond with:
                       isDark ? "text-emerald-400" : "text-emerald-600"
                     } font-bold`}
                   >
-                    Auto-Active
+                    {active}
                   </span>
                 ) : (
                   <span
@@ -804,7 +900,7 @@ If NO good match exists, respond with:
                     backdrop-blur-xl
                     `}
               >
-                {tabCount} Tabs Open
+                {tabCount} {tabsText}
               </span>
             </div>
           </div>
@@ -817,7 +913,7 @@ If NO good match exists, respond with:
             <LanguageDropdown
               isDark={isDark}
               onChange={(language) => {
-                chrome.storage.local.set({ preferredLanguage: language.code });
+                onChangeLanguage(language);
               }}
             />
             <button
@@ -839,7 +935,7 @@ If NO good match exists, respond with:
               disabled={loading}
               isDark={isDark}
               icon={BotMessageSquare}
-              text={"Chat"}
+              text={chat}
             />
           ) : (
             <Button
@@ -850,7 +946,7 @@ If NO good match exists, respond with:
               disabled={loading}
               isDark={isDark}
               icon={Boxes}
-              text="Groups"
+              text={group}
             />
           )}
 
@@ -865,21 +961,21 @@ If NO good match exists, respond with:
             disabled={loading}
             isDark={isDark}
             icon={MessageCircleQuestionMark}
-            text="Help"
+            text={help}
           />
           <Button
             onClick={async () => quickOrganize()}
             disabled={loading}
             isDark={isDark}
             icon={BotMessageSquare}
-            text="Organize Now"
+            text={organise}
           />
           <Button
             onClick={clearChat}
             disabled={loading}
             isDark={isDark}
             icon={Trash2}
-            text="Clear Chat"
+            text={clear}
           />
         </div>
       </div>
@@ -1083,7 +1179,7 @@ If NO good match exists, respond with:
                         `}
                       style={{ wordWrap: "break-word" }}
                     >
-                      {msg.text}
+                      {<TranslatedText msg={msg} />}
                     </div>
                   </div>
                 );
@@ -1119,7 +1215,7 @@ If NO good match exists, respond with:
                       whiteSpace: "preserve-breaks",
                     }}
                   >
-                    <ReactMarkdown>{msg.text}</ReactMarkdown>
+                    {<TranslatedText msg={msg} />}
                   </div>
                 </div>
               );

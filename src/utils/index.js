@@ -87,28 +87,68 @@ EXPLANATION FIELD
 Ensure valid JSON formatting and logically merged groups.
 `;
 
-export const helpMessage = `
-## 📚 AI Commands
+export const helpMessage = `## 🎯 AI Tab Manager - Complete Guide
 
-- \`organize my tabs\`  
-- \`group tabs by topic\`  
+### 🌐 **Open New Sites with Natural Language** (ENHANCED!)
+Just tell me what you want to do!
+
+**Activity-Based:**
+- **"I want to watch reels"** → Opens Instagram Reels
+- **"I want to watch shorts"** → Opens YouTube Shorts
+- **"watch videos"** → Opens YouTube
+- **"listen to music"** → Opens Spotify
+- **"shop for clothes"** → Opens Amazon
+- **"read news"** → Opens Google News
+- **"check email"** → Opens Gmail
+
+**Direct Site Opening:**
+- **"open youtube"** → Opens YouTube
+- **"visit github"** → Opens GitHub
+- **"go to stackoverflow"** → Opens Stack Overflow
+
+💡 AI understands your intent - just say what you want!
+
+### 🔍 **Smart Search** (Email-Aware!)
+Find and switch to existing tabs with powerful search!
+
+**General Search:**
+- **"gmail"** → Opens your Gmail tab
+- **"react docs"** → Finds React documentation
+- **"shopping cart"** → Finds shopping tabs
+
+**Email-Specific Search:**
+- **"email from john"** → Finds emails from John
+- **"email about meeting"** → Finds emails with "meeting" in subject
+- **"mail from support"** → Finds support emails
+- **"email regarding invoice"** → Searches email subjects
+
+💡 **Searches work across:**
+- Tab titles
+- Page content (automatically indexed)
+- Email subjects, senders, and content
+- URLs
+
+### 📁 **Organization**
+- **"organize my tabs"** → AI groups all tabs intelligently
+- **"group all as Work"** → Group all tabs under one name
+- **"groups"** → View all your groups
+
+### ✏️ **Management**
+- **"rename [old name] to [new name]"** → Rename a group
+- **"ungroup [name]"** → Remove grouping
+- **"list groups"** → Show all groups
+
+### 💬 **Chat**
+Ask me anything about your tabs or browsing!
 
 ---
-
-## 🛠️ Manual Commands
-
-- \`group all as <your group name>\`  
-- \`rename <old group name> to <new group name>\`  
-- \`ungroup <group name>\`  
-- \`list groups\`  
-
----
-
-## 💡 Examples
-
-- \`group all as Work\`  
-- \`list groups\`
-`;
+**✨ Pro Tips:**
+- Content is automatically indexed as you browse
+- Email subjects and senders are specially indexed for Gmail
+- Use natural language - "I want to..." or "show me..."
+- Activity keywords: watch, listen, play, read, shop, check
+- No "open" keyword = searches existing tabs
+- With "open" keyword = creates new tab`;
 
 export const aiReadyMessage = `
   🤖 AI is ready! Ask me to organize tabs or type help.

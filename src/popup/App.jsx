@@ -1,3 +1,4 @@
+// src/popup/App.jsx
 import { useState, useRef, useEffect } from "react";
 import {
   aiReadyMessage,
@@ -22,11 +23,11 @@ import { SendHorizontal } from "lucide-react";
 import { Folder } from "lucide-react";
 import { Pencil } from "lucide-react";
 import { Trash2 } from "lucide-react";
-import { Search } from "lucide-react";
 import ToggleButton from "../components/ToggleButton";
 import LanguageDropdown from "../components/DropdownButton";
 
 export default function App() {
+  // UI / feature state
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState([]);
   const [prompt, setPrompt] = useState("");
@@ -37,25 +38,27 @@ export default function App() {
   const [groups, setGroups] = useState([]);
   const [renamingGroup, setRenamingGroup] = useState(null);
   const [newGroupName, setNewGroupName] = useState("");
-  const [enabled, setEnabled] = useState(true);
+  const [enabled, setEnabled] = useState(true); // auto-grouping
+
+  // refs
   const sessionRef = useRef(null);
   const chatEndRef = useRef(null);
   const proofreaderRef = useRef(null);
 
+  // Load auto-grouping pref on mount
   useEffect(() => {
     chrome.storage.local.get("autoGroupingEnabled", (data) => {
       setEnabled(data.autoGroupingEnabled ?? true);
     });
   }, []);
 
-  // User effect to trigger on component mount
+  // Load persisted messages, init AIs, counts, theme
   useEffect(() => {
-    // Load persisted messages from Chrome storage
+    // messages
     chrome.storage.local.get("chatMessages", (data) => {
       if (data.chatMessages && Array.isArray(data.chatMessages)) {
         setMessages(data.chatMessages);
       } else {
-        // Only add welcome message if no chat history exists
         setMessages([
           {
             text: "👋 Welcome to AI Tab Manager! Type 'help' to see what I can do.",
@@ -69,8 +72,8 @@ export default function App() {
     initializeAI();
     initializeProofreaderAI();
     updateTabCount();
-    
-    // Load theme from chrome.storage.local
+
+    // Load theme
     chrome.storage.local.get("tabManagerTheme", (data) => {
       if (data.tabManagerTheme) {
         setIsDark(data.tabManagerTheme === "dark");
@@ -81,6 +84,8 @@ export default function App() {
     chrome.storage.local.get("autoGroupingEnabled", (data) => {
       setEnabled(data.autoGroupingEnabled ?? true); // default ON
     });
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Scroll to bottom on new message
@@ -96,6 +101,7 @@ export default function App() {
   // Auto-handle help prompt
   useEffect(() => {
     if (prompt === "help") handleSend();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prompt]);
 
   // Toggle auto-grouping feature
@@ -150,7 +156,7 @@ export default function App() {
         console.log("✅ Proofreader AI initialized");
       }
     } catch (error) {
-      console.error("❌ Proofreader AI initialization failed:", err);
+      console.error("❌ Proofreader AI initialization failed:", error);
     }
   };
 
@@ -213,6 +219,7 @@ export default function App() {
         title: tab.title,
         url: tab.url,
         groupId: tab.groupId,
+        windowId: tab.windowId,
       }));
   };
 
@@ -220,6 +227,27 @@ export default function App() {
   const detectCommand = (text) => {
     const lower = text.toLowerCase();
     if (lower === "help" || lower === "commands") return { type: "help" };
+
+    // Detect intent-based "open" commands with AI understanding
+    if (
+      lower.startsWith("open ") ||
+      lower.startsWith("visit ") ||
+      lower.startsWith("go to ") ||
+      lower.includes("open new tab") ||
+      lower.match(/^(launch|start)\s+/) ||
+      // Intent-based patterns
+      lower.includes("i want to") ||
+      lower.includes("take me to") ||
+      lower.includes("show me") ||
+      lower.match(/^(watch|play|listen|read|buy|shop|search for)/i)
+    ) {
+      const site = text
+        .replace(/^(open|visit|go to|launch|start|open new tab|open new tab for|open new tab with)\s+/i, "")
+        .replace(/^(i want to|take me to|show me)\s+/i, "")
+        .trim();
+      return { type: "openSite", site, originalText: text };
+    }
+
     if (
       lower.includes("list group") ||
       lower.includes("show group") ||
@@ -253,17 +281,33 @@ export default function App() {
       );
       if (match) return { type: "groupAll", title: match[1].trim() };
     }
+    // Enhanced search detection - match any natural language query
     if (
       lower.startsWith("search ") ||
       lower.startsWith("find ") ||
-      lower.startsWith("open ") ||
-      lower.startsWith("go to ") ||
-      lower.startsWith("switch to ")
+      lower.startsWith("switch to ") ||
+      lower.includes("where is") ||
+      lower.includes("looking for") ||
+      lower.match(/^find (my|the)\s+/i) ||
+      lower.match(/^show (my|the)\s+/i) ||
+      // Question patterns
+      lower.match(/^(what|which|where).*(tab|page|site|email|mail)/i) ||
+      // Email-specific searches
+      lower.match(/^(email|mail)\s+(from|about|with|regarding)/i) ||
+      // Direct queries without keywords
+      (!lower.includes("group") && !lower.includes("organize") &&
+        !lower.includes("categorize") && !lower.includes("sort") &&
+        !lower.includes("open") && !lower.includes("visit") &&
+        !lower.includes("i want") && !lower.includes("watch") &&
+        !lower.includes("play") && !lower.includes("listen") &&
+        text.split(" ").length <= 5 && text.length > 3)
     ) {
       const query = text
-        .replace(/^(search|find|open|go to|switch to)\s+/i, "")
+        .replace(/^(search|find|switch to|where is|looking for)\s+/i, "")
+        .replace(/^(what|which|where).*?(tab|page|site|email|mail)\s+/i, "")
+        .replace(/^(show|find)\s+(my|the)\s+/i, "")
         .trim();
-      return { type: "search", query };
+      return { type: "search", query: query || text };
     }
     if (
       lower.includes("group") ||
@@ -276,246 +320,350 @@ export default function App() {
     return { type: "chat" };
   };
 
-
-  // Search through tabs and switch to matching one (context-aware)
-  const searchTabs = async (query) => {
-    if (proofreaderRef.current) {
-        try {
-          const result = await proofreaderRef.current.proofread(query);
-          const query = result.correctedInput;
-        } catch (err) {
-          console.warn("Proofreader failed:", err);
-        }
-      } 
+  // ---------------- SITE OPENING HELPER ----------------
+  async function openNewSite(siteName, originalText = "") {
     try {
-      const allTabs = await chrome.tabs.query({ currentWindow: true });
-      const validTabs = allTabs.filter((tab) => {
-        const url = tab.url || "";
-        return (
-          !url.startsWith("chrome://") &&
-          !url.startsWith("chrome-extension://") &&
-          !url.startsWith("edge://") &&
-          !url.startsWith("about:")
-        );
-      });
+      // Use AI to intelligently convert site name/intent to URL
+      if (sessionRef.current) {
+        const aiPrompt = `You are a smart URL resolver. Convert the user's intent or site name to the correct URL.
 
-      if (validTabs.length === 0) {
-        return { found: false, message: "❌ No tabs available to search" };
+User said: "${originalText || siteName}"
+
+RULES:
+1. Understand user INTENT, not just literal text
+2. For activity-based requests, open the right platform:
+   - "watch reels" → Instagram Reels
+   - "watch shorts" → YouTube Shorts
+   - "watch videos" → YouTube
+   - "listen to music" → Spotify or YouTube Music
+   - "read news" → News site
+   - "shop" → Amazon
+   - "buy something" → Amazon
+   - "search for X" → Google search for X
+
+3. For site names, return the main URL:
+   - "google" → https://www.google.com
+   - "youtube" → https://www.youtube.com
+   - "github" → https://github.com
+   - "stackoverflow" → https://stackoverflow.com
+   - "instagram" → https://www.instagram.com
+   - "facebook" → https://www.facebook.com
+   - "twitter" or "x" → https://twitter.com
+   - "reddit" → https://www.reddit.com
+   - "linkedin" → https://www.linkedin.com
+   - "amazon" → https://www.amazon.com
+   - "netflix" → https://www.netflix.com
+   - "spotify" → https://www.spotify.com
+   - "gmail" → https://mail.google.com
+   - "outlook" → https://outlook.live.com
+   - "docs" → https://docs.google.com
+   - "drive" → https://drive.google.com
+   - "maps" → https://maps.google.com
+   - "translate" → https://translate.google.com
+   - "wikipedia" → https://www.wikipedia.org
+
+4. For specific platform features:
+   - "instagram reels" → https://www.instagram.com/reels/
+   - "youtube shorts" → https://www.youtube.com/shorts
+   - "twitter trending" → https://twitter.com/explore
+   - "reddit popular" → https://www.reddit.com/r/popular
+
+5. Always use https://
+6. If already a URL, return as-is
+7. For ambiguous searches, use Google: https://www.google.com/search?q=QUERY
+
+Return ONLY the URL, nothing else.`;
+
+        const aiResponse = await sessionRef.current.prompt(aiPrompt);
+        let url = aiResponse.trim().replace(/["\n]/g, "");
+
+        // Fallback URL construction if AI fails or returns invalid
+        if (!url.startsWith("http")) {
+          url = constructURLFromIntent(originalText || siteName);
+        }
+
+        // Open the new tab
+        await chrome.tabs.create({ url, active: true });
+        return { success: true, url };
+      } else {
+        // Fallback without AI
+        const url = constructURLFromIntent(originalText || siteName);
+        await chrome.tabs.create({ url, active: true });
+        return { success: true, url };
       }
+    } catch (err) {
+      console.error("Error opening site:", err);
+      return { success: false, error: err.message };
+    }
+  }
 
-      // Use AI for context-aware search
-      if (sessionRef.current && aiStatus === "ready") {
-        const tabsList = validTabs
-          .map(
-            (tab, idx) =>
-              `${idx + 1}. Title: "${tab.title}"\n   URL: ${tab.url}\n   ID: ${tab.id}`
-          )
-          .join("\n\n");
+  // Enhanced fallback URL construction with intent understanding
+  function constructURLFromIntent(text) {
+    const lower = text.toLowerCase().trim();
 
-        const aiPrompt = `You are a tab search assistant. The user is searching for: "${query}"
+    // Already a URL
+    if (lower.startsWith("http://") || lower.startsWith("https://")) {
+      return text;
+    }
 
-Analyze these open tabs and find the BEST match based on context, content, and relevance:
-${tabsList}
+    // Intent-based mapping
+    const intentMap = {
+      // Video/Entertainment
+      "watch reels": "https://www.instagram.com/reels/",
+      "watch shorts": "https://www.youtube.com/shorts",
+      "watch videos": "https://www.youtube.com",
+      "watch youtube": "https://www.youtube.com",
+      "watch movies": "https://www.netflix.com",
+      "watch netflix": "https://www.netflix.com",
+
+      // Music
+      "listen to music": "https://www.spotify.com",
+      "listen music": "https://www.spotify.com",
+      "play music": "https://www.spotify.com",
+      "play songs": "https://www.spotify.com",
+
+      // Social Media
+      "check instagram": "https://www.instagram.com",
+      "check facebook": "https://www.facebook.com",
+      "check twitter": "https://twitter.com",
+      "check reddit": "https://www.reddit.com",
+
+      // Shopping
+      "shop": "https://www.amazon.com",
+      "buy something": "https://www.amazon.com",
+      "shopping": "https://www.amazon.com",
+
+      // Reading
+      "read news": "https://news.google.com",
+      "read articles": "https://news.google.com",
+
+      // Work
+      "check email": "https://mail.google.com",
+      "check gmail": "https://mail.google.com",
+      "check mail": "https://mail.google.com",
+      "write email": "https://mail.google.com",
+    };
+
+    // Check intent matches
+    for (const [intent, url] of Object.entries(intentMap)) {
+      if (lower.includes(intent)) {
+        return url;
+      }
+    }
+
+    // Common sites mapping
+    const commonSites = {
+      "google": "https://www.google.com",
+      "youtube": "https://www.youtube.com",
+      "facebook": "https://www.facebook.com",
+      "twitter": "https://twitter.com",
+      "x": "https://x.com",
+      "instagram": "https://www.instagram.com",
+      "linkedin": "https://www.linkedin.com",
+      "github": "https://github.com",
+      "reddit": "https://www.reddit.com",
+      "amazon": "https://www.amazon.com",
+      "netflix": "https://www.netflix.com",
+      "spotify": "https://www.spotify.com",
+      "gmail": "https://mail.google.com",
+      "outlook": "https://outlook.live.com",
+      "yahoo": "https://www.yahoo.com",
+      "stackoverflow": "https://stackoverflow.com",
+      "stack overflow": "https://stackoverflow.com",
+      "wikipedia": "https://www.wikipedia.org",
+      "docs": "https://docs.google.com",
+      "drive": "https://drive.google.com",
+      "maps": "https://maps.google.com",
+      "news": "https://news.google.com",
+      "translate": "https://translate.google.com",
+      "reels": "https://www.instagram.com/reels/",
+      "shorts": "https://www.youtube.com/shorts",
+    };
+
+    // Extract key site name from text
+    for (const [key, url] of Object.entries(commonSites)) {
+      if (lower.includes(key)) {
+        return url;
+      }
+    }
+
+    // If it looks like a domain (contains dot)
+    if (lower.includes(".")) {
+      return `https://${lower}`;
+    }
+
+    // Otherwise, Google search
+    return `https://www.google.com/search?q=${encodeURIComponent(text)}`;
+  }
+
+  // ---------------- FUSE + AI helpers ----------------
+  // queryFuse: asks background to run fuseSearch
+  async function queryFuse(query, limit = 10) {
+    if (!query || query.trim() === "") return [];
+    return new Promise((resolve) => {
+      chrome.runtime.sendMessage(
+        { action: "fuseSearch", query, limit },
+        (resp) => {
+          if (chrome.runtime.lastError) {
+            console.error("Fuse query error:", chrome.runtime.lastError);
+            resolve([]);
+            return;
+          }
+          if (!resp || !resp.results) {
+            resolve([]);
+            return;
+          }
+          resolve(resp.results);
+        }
+      );
+    });
+  }
+
+  // rankWithAI: ask Gemini Nano to pick best candidate among top N
+  async function rankWithAI(query, candidates = [], maxCandidates = 8, sessionRefLocal) {
+    if (!sessionRefLocal?.current) {
+      return { chosenIndex: 0, reason: "no ai session" };
+    }
+
+    const top = candidates.slice(0, maxCandidates);
+    if (top.length === 0) {
+      return { chosenIndex: -1, reason: "no candidates" };
+    }
+
+    // Build detailed candidate list emphasizing content differences
+    const candidateText = top.map((c, i) => {
+      const title = c.title || "";
+      const url = c.url || "";
+      const snippet = (c.snippet || "").slice(0, 500);
+
+      // Extract domain for context
+      let domain = "";
+      try {
+        domain = new URL(url).hostname.replace(/^www\./, "");
+      } catch { }
+
+      return `${i + 1}) "${title}"
+   Domain: ${domain}
+   Content: ${snippet || "No content available"}`;
+    }).join("\n\n");
+
+    const promptText = `You are a smart tab-ranking assistant. The user wants to find a specific tab.
+
+User query: "${query}"
+
+Available tabs:
+${candidateText}
 
 INSTRUCTIONS:
+- Analyze the query to understand what the user is looking for
+- Match based on: topic relevance, keywords, content meaning (not just title similarity)
+- For ambiguous queries, prefer the most recently active or most relevant tab
+- Consider the full content snippet, not just the title
 
-1. **Understand the user's search intent and context**
-   - Determine if the query is looking for a specific item WITHIN a page (e.g., "mail from Spotify", "email about invoice")
-   - Or if it's looking for a general page type (e.g., "Gmail", "React docs")
+Return ONLY this JSON:
+{ "matchIndex": <1-based index>, "confidence": "low|medium|high", "reason": "<brief explanation>" }`;
 
-2. **Match based on priority hierarchy:**
-   
-   a) **Page Content Analysis (HIGHEST PRIORITY for specific searches)**
-      - For email searches: Check email subjects, sender names, and preview text
-      - For document searches: Check document titles, headings, and visible content
-      - For social media: Check post content, usernames mentioned
-      - Look for the SPECIFIC keyword/entity mentioned in the query within the page content
-   
-   b) **URL and Path Matching**
-      - Project names in URLs (e.g., github.com/user/project-name)
-      - URL paths and parameters that indicate content type
-      - Domain relevance to query
-   
-   c) **Page Title Matching**
-      - Keywords in page titles
-      - Context from title structure
-   
-   d) **Overall Context**
-      - What type of page it is (email client, docs, social media, etc.)
-      - Semantic similarity to query intent
-
-3. **Special handling for content-specific searches:**
-   - If query contains phrases like "mail about/from/for", "email with", "message from", etc.:
-     * Prioritize tabs that are email clients (Gmail, Outlook, etc.)
-     * Then look INSIDE the email content for matches to the specific keyword
-     * Match the tab where that specific email/content is visible or likely to be found
-   
-   - If query contains "document about", "page with", "article on":
-     * Look for the specific topic within the page content/headings
-     * Don't just match the page type, match the content topic
-
-4. **Matching strategies:**
-   - Use semantic similarity, not just keyword matching
-   - If searching for a specific project/repo, match the exact project name in the URL
-   - If searching for content within a page type, verify that specific content exists
-   - Consider query context: "mail for X" means find X in emails, not just open any email tab
-
-5. **Examples:**
-   - "react docs" → Match official React documentation, not a blog about React
-   - "my todo app" → Match github.com/username/todo-app, not a generic todo list
-   - "python tutorial" → Match a Python learning page, not Python library docs
-   - "netflix" → Match the Netflix streaming site, not an article about Netflix
-   - **"mail from Spotify"** → Match Gmail/email tab that contains email from Spotify in subject/sender, not just any Gmail tab
-   - **"email about invoice"** → Match email tab with "invoice" in email subjects/content
-   - **"tweet about AI"** → Match Twitter/X tab with AI-related tweets visible, not just any Twitter tab
-
-6. **Confidence scoring:**
-   - HIGH: Exact match found in content, URL, or title as intended by query
-   - MEDIUM: Relevant page type found but specific content match uncertain
-   - LOW: Weak correlation, might be what user wants
-   - NONE: No relevant match
-
-Respond with ONLY valid JSON in this format:
-{
-  "matchIndex": <number 1-${validTabs.length}>,
-  "confidence": <"high" | "medium" | "low">,
-  "reason": "Brief explanation of why this tab matches (mention specific content found if applicable)",
-  "alternativeMatches": [<array of other possible match indices>]
-}
-
-If NO good match exists, respond with:
-{
-  "matchIndex": null,
-  "confidence": "none",
-  "reason": "No relevant tabs found",
-  "alternativeMatches": []
-}`;
-
-        try {
-          addMessage("🔍 Searching through tabs...", "system");
-          const response = await sessionRef.current.prompt(aiPrompt);
-          console.log("AI Search Response:", response);
-
-          // Parse AI response
-          const jsonMatch = response.match(/\{[\s\S]*\}/);
-          if (!jsonMatch) {
-            throw new Error("Invalid AI response format");
-          }
-
-          const result = JSON.parse(jsonMatch[0]);
-
-          if (!result.matchIndex || result.confidence === "none") {
-            // No good match found
-            const lowerQuery = query.toLowerCase();
-            const fallbackMatches = validTabs.filter((tab) => {
-              const title = (tab.title || "").toLowerCase();
-              const url = (tab.url || "").toLowerCase();
-              return title.includes(lowerQuery) || url.includes(lowerQuery);
-            });
-
-            if (fallbackMatches.length > 0) {
-              const matchList = fallbackMatches
-                .slice(0, 5)
-                .map((tab) => `• ${tab.title}`)
-                .join("\n");
-              return {
-                found: false,
-                message: `⚠️ No strong contextual match found for "${query}"\n\nDid you mean one of these?\n${matchList}`,
-              };
-            }
-
-            return {
-              found: false,
-              message: `❌ No tabs found matching "${query}"\n\n💡 Tip: Try searching by page content, project name, or topic`,
-            };
-          }
-
-          // Valid match found
-          const matchIndex = result.matchIndex - 1; // Convert to 0-based index
-          if (matchIndex < 0 || matchIndex >= validTabs.length) {
-            throw new Error("Invalid match index from AI");
-          }
-
-          const matchedTab = validTabs[matchIndex];
-          await chrome.tabs.update(matchedTab.id, { active: true });
-          await chrome.windows.update(matchedTab.windowId, { focused: true });
-
-          let message = `✅ **Found and switched to:**\n"${matchedTab.title}"\n\n`;
-          message += `🎯 **Confidence:** ${result.confidence}\n`;
-          message += `💡 **Why:** ${result.reason}`;
-
-          // Show alternative matches if any
-          if (
-            result.alternativeMatches &&
-            result.alternativeMatches.length > 0
-          ) {
-            const alternatives = result.alternativeMatches
-              .slice(0, 3)
-              .map((idx) => {
-                const altTab = validTabs[idx - 1];
-                return altTab ? `• ${altTab.title}` : null;
-              })
-              .filter(Boolean)
-              .join("\n");
-
-            if (alternatives) {
-              message += `\n\n**Other possible matches:**\n${alternatives}`;
-            }
-          }
-
-          return {
-            found: true,
-            message,
-            count: 1,
-          };
-        } catch (err) {
-          console.error("AI search failed:", err);
-          // Fall through to keyword-based fallback
-        }
+    try {
+      const raw = await sessionRefLocal.current.prompt(promptText);
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        return { chosenIndex: 0, reason: "no JSON in AI response", raw };
       }
-
-      // Fallback: Simple keyword search (when AI unavailable)
-      const lowerQuery = query.toLowerCase();
-      const matches = validTabs.filter((tab) => {
-        const title = (tab.title || "").toLowerCase();
-        const url = (tab.url || "").toLowerCase();
-        return title.includes(lowerQuery) || url.includes(lowerQuery);
-      });
-
-      if (matches.length === 0) {
-        return {
-          found: false,
-          message: `❌ No tabs found matching "${query}"\n\n💡 Tip: AI search is unavailable. Try exact keywords from tab titles.`,
-        };
-      }
-
-      if (matches.length === 1) {
-        await chrome.tabs.update(matches[0].id, { active: true });
-        await chrome.windows.update(matches[0].windowId, { focused: true });
-        return {
-          found: true,
-          message: `✅ Switched to: "${matches[0].title}"`,
-          count: 1,
-        };
-      }
-
-      // Multiple matches - switch to first
-      await chrome.tabs.update(matches[0].id, { active: true });
-      await chrome.windows.update(matches[0].windowId, { focused: true });
-
-      const matchList = matches
-        .slice(0, 5)
-        .map((tab) => `• ${tab.title}`)
-        .join("\n");
+      const parsed = JSON.parse(jsonMatch[0]);
+      const idx = (parsed.matchIndex || 1) - 1;
       return {
-        found: true,
-        message: `✅ Found ${matches.length} matches. Switched to:\n"${matches[0].title}"\n\n**Other matches:**\n${matchList}\n\n💡 Enable AI for smarter context-aware search`,
-        count: matches.length,
+        chosenIndex: Math.max(0, Math.min(idx, top.length - 1)),
+        confidence: parsed.confidence,
+        reason: parsed.reason || ""
       };
     } catch (err) {
-      return { found: false, message: `❌ Error: ${err.message}` };
+      console.error("AI rank error:", err);
+      return { chosenIndex: 0, reason: "ai error" };
     }
-  };
+  }
+
+  // searchAndOpen: full flow used by the UI when user searches
+  async function searchAndOpen(query) {
+    // Proofread first if available
+    if (proofreaderRef.current) {
+      try {
+        const proof = await proofreaderRef.current.proofread(query);
+        query = proof.correctedInput || query;
+      } catch (err) {
+        console.warn("Proofreader failed:", err);
+      }
+    }
+
+    // 1) Get Fuse candidates
+    const candidates = await queryFuse(query, 12);
+
+    if (!candidates || candidates.length === 0) {
+      // Fallback: basic keyword search in all tabs
+      console.log("🔎 No Fuse results, trying fallback...");
+      const q = query.toLowerCase();
+      const all = await chrome.tabs.query({ currentWindow: true });
+      const match = all.find(t => {
+        const title = (t.title || "").toLowerCase();
+        const url = (t.url || "").toLowerCase();
+        return title.includes(q) || url.includes(q);
+      });
+
+      if (match) {
+        try {
+          await chrome.tabs.update(match.id, { active: true });
+          await chrome.windows.update(match.windowId, { focused: true });
+          return { opened: true, method: "fallback", title: match.title, url: match.url };
+        } catch (err) {
+          console.error("Tab activation error:", err);
+          return { opened: false, error: "Could not switch to tab" };
+        }
+      }
+      return { opened: false, error: "No matching tabs found" };
+    }
+
+    console.log(`🔎 Found ${candidates.length} candidates from Fuse`);
+
+    // 2) If AI available and multiple candidates, use it to rank
+    if (sessionRef.current && aiStatus === "ready" && candidates.length > 1) {
+      try {
+        const { chosenIndex, confidence, reason } = await rankWithAI(query, candidates, 8, sessionRef);
+        const chosen = candidates[Math.max(0, Math.min(chosenIndex, candidates.length - 1))];
+
+        if (chosen && chosen.id) {
+          console.log(`🤖 AI selected: ${chosen.title} (confidence: ${confidence})`);
+          console.log(`   Reason: ${reason}`);
+          try {
+            await chrome.tabs.update(chosen.id, { active: true });
+            await chrome.windows.update(chosen.windowId, { focused: true });
+            return { opened: true, method: "ai", title: chosen.title, url: chosen.url, confidence, reason };
+          } catch (err) {
+            console.error("Tab activation error:", err);
+            return { opened: false, error: "Tab no longer exists" };
+          }
+        }
+      } catch (err) {
+        console.error("AI ranking failed:", err);
+        // Continue to fallback below
+      }
+    }
+
+    // 3) Fallback: open top Fuse result
+    const top = candidates[0];
+    if (top && top.id) {
+      try {
+        await chrome.tabs.update(top.id, { active: true });
+        await chrome.windows.update(top.windowId, { focused: true });
+        return { opened: true, method: "fuse", title: top.title, url: top.url };
+      } catch (err) {
+        console.error("Tab activation error:", err);
+        return { opened: false, error: "Tab no longer exists" };
+      }
+    }
+
+    return { opened: false, error: "No valid tabs found" };
+  }
+
+  // ---------------- Existing grouping-related helpers (original logic) ----------------
   const askAIToGroupTabs = async (tabs, userRequest) => {
     if (!sessionRef.current) throw new Error("AI session not available");
     const tabsList = tabs
@@ -523,9 +671,8 @@ If NO good match exists, respond with:
         (tab) => `Tab ${tab.id}: "${tab.title}" - ${new URL(tab.url).hostname}`
       )
       .join("\n");
-    const response = await sessionRef.current.prompt(`Analyze ${
-      tabs.length
-    } tabs and group them logically.
+    const response = await sessionRef.current.prompt(`Analyze ${tabs.length
+      } tabs and group them logically.
       Tabs: ${tabsList}
       User wants: "${userRequest}"
       Respond with ONLY JSON: {"groups": {"Name": [ids]}, "explanation": "text"}
@@ -571,7 +718,7 @@ If NO good match exists, respond with:
     setNewGroupName("");
   };
 
-  // Handle sending user prompt
+  // ---------------- handleSend (main user input dispatcher) ----------------
   const handleSend = async () => {
     let text = prompt.trim();
     if (!text || loading) return;
@@ -598,10 +745,37 @@ If NO good match exists, respond with:
         return;
       }
 
-      if (command.type === "search") {
-        const result = await searchTabs(command.query);
+      // NEW: Handle opening sites
+      if (command.type === "openSite") {
+        const result = await openNewSite(command.site);
         setLoading(false);
-        addMessage(result.message, "bot");
+        if (result.success) {
+          addMessage(
+            `✅ Opened new tab: ${result.url}`,
+            "bot"
+          );
+          await updateTabCount();
+        } else {
+          addMessage(`❌ Could not open "${command.site}": ${result.error}`, "bot");
+        }
+        return;
+      }
+
+      if (command.type === "search") {
+        const result = await searchAndOpen(command.query);
+        setLoading(false);
+        if (result.opened) {
+          let msg = `✅ Opened: "${result.title}"`;
+          if (result.confidence) {
+            msg += `\n\n🎯 Match confidence: ${result.confidence}`;
+          }
+          if (result.reason) {
+            msg += `\n💡 ${result.reason}`;
+          }
+          addMessage(msg, "bot");
+        } else {
+          addMessage(`❌ No match found for "${command.query}"`, "bot");
+        }
         return;
       }
 
@@ -693,6 +867,7 @@ If NO good match exists, respond with:
         return;
       }
 
+      // Generic chat fallback
       if (sessionRef.current) {
         const response = await sessionRef.current.prompt(text);
         setLoading(false);
@@ -737,20 +912,19 @@ If NO good match exists, respond with:
     chrome.storage.local.remove("chatMessages");
   };
 
+  // ---------------------- UI Render ----------------------
   return (
     <div
-      className={`w-[500px] h-[600px] ${
-        isDark
+      className={`w-[500px] h-[600px] ${isDark
           ? "bg-gradient-to-br from-slate-900 via-gray-900 to-slate-900"
           : "bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50"
-      } font-sans flex flex-col transition-all duration-500`}
+        } font-sans flex flex-col transition-all duration-500`}
     >
       <div
-        className={`sticky top-0 h-40 px-6 py-4 ${
-          isDark
+        className={`sticky top-0 h-40 px-6 py-4 ${isDark
             ? "bg-gradient-to-tl from-gray-900/40 to-cyan-700/40 backdrop-blur-xl border-b border-white/10"
             : "bg-white/60 backdrop-blur-xl border-b border-indigo-200/50"
-        }`}
+          }`}
       >
         <div className="relative flex items-center justify-between mb-4">
           <div className="flex flex-col justify-between items-start ">
@@ -762,13 +936,13 @@ If NO good match exists, respond with:
                 <BotMessageSquare />
               </div>
               <h3
-                className={`text-lg font-bold tracking-tight ${
-                  isDark ? "text-white" : "text-slate-900"
-                }`}
+                className={`text-lg font-bold tracking-tight ${isDark ? "text-white" : "text-slate-900"
+                  }`}
               >
                 AI TAB MANAGER
               </h3>
             </div>
+
             <div className="flex items-center ml-13 w-[40vh] gap-2 mt-0.5">
               <div
                 className={`flex items-center justify-center gap-2 backdrop-blur-md px-4 py-1 rounded-xl
@@ -778,17 +952,15 @@ If NO good match exists, respond with:
               >
                 {aiStatus === "ready" ? (
                   <span
-                    className={`${
-                      isDark ? "text-emerald-400" : "text-emerald-600"
-                    } font-bold`}
+                    className={`${isDark ? "text-emerald-400" : "text-emerald-600"
+                      } font-bold`}
                   >
                     Auto-Active
                   </span>
                 ) : (
                   <span
-                    className={`${
-                      isDark ? "text-slate-400" : "text-black"
-                    } font-bold`}
+                    className={`${isDark ? "text-slate-400" : "text-black"
+                      } font-bold`}
                   >
                     {aiStatus}
                   </span>
@@ -796,11 +968,10 @@ If NO good match exists, respond with:
               </div>
               <span
                 className={`text-xs font-bold px-4 py-1 rounded-xl not-first:  
-                    ${
-                      isDark
-                        ? "bg-transparent text-yellow-500"
-                        : "bg-gray-200 text-red-400"
-                    }
+                    ${isDark
+                    ? "bg-transparent text-yellow-500"
+                    : "bg-gray-200 text-red-400"
+                  }
                     backdrop-blur-xl
                     `}
               >
@@ -808,12 +979,17 @@ If NO good match exists, respond with:
               </span>
             </div>
           </div>
-          <div className="w-52 flex items-center gap-4">
+
+          {/* Header controls: Auto-group toggle, language, theme */}
+          <div className="w-72 flex items-center gap-3">
+            {/* Auto-group toggle */}
             <ToggleButton
               enabled={enabled}
               onChange={toggleFeature}
               isDark={isDark}
             />
+
+            {/* Language and theme */}
             <LanguageDropdown
               isDark={isDark}
               onChange={(language) => {
@@ -822,9 +998,8 @@ If NO good match exists, respond with:
             />
             <button
               onClick={() => setIsDark(!isDark)}
-              className={`p-2 rounded-xl transition-all hover:scale-110 cursor-pointer ${
-                isDark ? "text-yellow-300" : "text-slate-700"
-              }`}
+              className={`p-2 rounded-xl transition-all hover:scale-110 cursor-pointer ${isDark ? "text-yellow-300" : "text-slate-700"
+                }`}
               title="Toggle theme"
             >
               {isDark ? <Sun /> : <Moon />}
@@ -886,19 +1061,17 @@ If NO good match exists, respond with:
 
       {showGroupManager ? (
         <div
-          className={`w-[500px] h-[600px] overflow-x-hidden ${
-            isDark
+          className={`w-[500px] h-[600px] overflow-x-hidden ${isDark
               ? "bg-gradient-to-br from-gray-900 via-cyan-900 to-black"
               : "bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50"
-          } font-sans flex flex-col transition-all duration-500`}
+            } font-sans flex flex-col transition-all duration-500`}
         >
           <div
             className={`flex justify-between items-center px-6 py-4 border-b border-slate-300/20 `}
           >
             <h3
-              className={`text-xl uppercase font-bold tracking-tight ${
-                isDark ? "text-white" : "text-slate-900"
-              }`}
+              className={`text-xl uppercase font-bold tracking-tight ${isDark ? "text-white" : "text-slate-900"
+                }`}
             >
               Tab Groups
             </h3>
@@ -912,9 +1085,8 @@ If NO good match exists, respond with:
           </div>
 
           <div
-            className={`flex-1 overflow-y-auto px-6 py-5 ${
-              isDark ? "" : "bg-white/30"
-            }`}
+            className={`flex-1 overflow-y-auto px-6 py-5 ${isDark ? "" : "bg-white/30"
+              }`}
           >
             {groups.length === 0 ? (
               <div className="flex flex-col gap-2 items-center justify-center h-full">
@@ -922,9 +1094,8 @@ If NO good match exists, respond with:
                   className={` ${isDark ? "text-white" : "text-black"}`}
                 />
                 <p
-                  className={`text-center text-lg font-bold mono ${
-                    isDark ? "text-slate-300" : "text-slate-600"
-                  }`}
+                  className={`text-center text-lg font-bold mono ${isDark ? "text-slate-300" : "text-slate-600"
+                    }`}
                 >
                   No groups yet. Create some!
                 </p>
@@ -947,11 +1118,10 @@ If NO good match exists, respond with:
                               handleRenameSubmit(group.title);
                             if (e.key === "Escape") setRenamingGroup(null);
                           }}
-                          className={`flex-1 px-3 py-1.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 ${
-                            isDark
+                          className={`flex-1 px-3 py-1.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 ${isDark
                               ? "bg-slate-700 border border-slate-600 text-white "
                               : "bg-white border border-slate-300 text-slate-900"
-                          }`}
+                            }`}
                           autoFocus
                         />
                         <button
@@ -962,11 +1132,10 @@ If NO good match exists, respond with:
                         </button>
                         <button
                           onClick={() => setRenamingGroup(null)}
-                          className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
-                            isDark
+                          className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all cursor-pointer ${isDark
                               ? "bg-slate-700 text-white hover:bg-slate-600"
                               : "bg-slate-200 text-slate-700 hover:bg-slate-300"
-                          }`}
+                            }`}
                         >
                           ✕
                         </button>
@@ -974,47 +1143,43 @@ If NO good match exists, respond with:
                     ) : (
                       <>
                         <div
-                          className={`flex justify-between items-center p-4 rounded-2xl shadow-sm border transition-all ${
-                            isDark
+                          className={`flex justify-between items-center p-4 rounded-2xl shadow-sm border transition-all ${isDark
                               ? "bg-slate-800 border-slate-700 hover:border-slate-600"
                               : "bg-white border-slate-200 hover:border-slate-300"
-                          }`}
+                            }`}
                         >
                           <div className="flex items-start gap-3">
                             <div
-                              className={`w-3 h-3 mt-1 rounded-full ${
-                                group.color === "blue"
+                              className={`w-3 h-3 mt-1 rounded-full ${group.color === "blue"
                                   ? "bg-blue-500"
                                   : group.color === "red"
-                                  ? "bg-red-500"
-                                  : group.color === "yellow"
-                                  ? "bg-yellow-500"
-                                  : group.color === "green"
-                                  ? "bg-green-500"
-                                  : group.color === "pink"
-                                  ? "bg-pink-500"
-                                  : group.color === "purple"
-                                  ? "bg-purple-500"
-                                  : group.color === "cyan"
-                                  ? "bg-cyan-500"
-                                  : "bg-orange-500"
-                              }`}
+                                    ? "bg-red-500"
+                                    : group.color === "yellow"
+                                      ? "bg-yellow-500"
+                                      : group.color === "green"
+                                        ? "bg-green-500"
+                                        : group.color === "pink"
+                                          ? "bg-pink-500"
+                                          : group.color === "purple"
+                                            ? "bg-purple-500"
+                                            : group.color === "cyan"
+                                              ? "bg-cyan-500"
+                                              : "bg-orange-500"
+                                }`}
                             ></div>
 
                             <div className="flex flex-col">
                               <h4
-                                className={`font-semibold text-base leading-tight ${
-                                  isDark ? "text-white" : "text-slate-900"
-                                }`}
+                                className={`font-semibold text-base leading-tight ${isDark ? "text-white" : "text-slate-900"
+                                  }`}
                               >
                                 {group.title}
                               </h4>
                               <span
-                                className={`text-xs mt-1 px-2 py-0.5 rounded-md w-fit ${
-                                  isDark
+                                className={`text-xs mt-1 px-2 py-0.5 rounded-md w-fit ${isDark
                                     ? "bg-slate-700 text-slate-300"
                                     : "bg-slate-100 text-slate-600"
-                                }`}
+                                  }`}
                               >
                                 {group.tabCount}{" "}
                                 {group.tabCount === 1 ? "tab" : "tabs"}
@@ -1025,22 +1190,20 @@ If NO good match exists, respond with:
                           <div className="flex gap-2">
                             <button
                               onClick={() => handleRenameStart(group)}
-                              className={`p-2 rounded-lg transition-all hover:scale-110 cursor-pointer ${
-                                isDark
+                              className={`p-2 rounded-lg transition-all hover:scale-110 cursor-pointer ${isDark
                                   ? "bg-green-600/80 hover:bg-green-600 text-white"
                                   : "bg-green-500 hover:bg-green-600 text-white"
-                              }`}
+                                }`}
                             >
                               <Pencil size={16} />
                             </button>
 
                             <button
                               onClick={() => handleUngroup(group.title)}
-                              className={`p-2 rounded-lg transition-all hover:scale-110 cursor-pointer ${
-                                isDark
+                              className={`p-2 rounded-lg transition-all hover:scale-110 cursor-pointer ${isDark
                                   ? "bg-red-600/80 hover:bg-red-600 text-white"
                                   : "bg-red-500 hover:bg-red-600 text-white"
-                              }`}
+                                }`}
                             >
                               <Trash2 size={16} />
                             </button>
@@ -1057,11 +1220,10 @@ If NO good match exists, respond with:
       ) : (
         <>
           <div
-            className={`flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-3 ${
-              isDark
+            className={`flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-3 ${isDark
                 ? "bg-gradient-to-br from-gray-900 via-cyan-900 to-black"
                 : "bg-white/30"
-            }`}
+              }`}
           >
             {messages.map((msg, i) => {
               const isUser = msg.sender === "user";
@@ -1075,10 +1237,9 @@ If NO good match exists, respond with:
                   >
                     <div
                       className={`max-w-[15rem] px-4 py-2.5 rounded-2xl rounded-tr-md shadow-lg text-sm leading-relaxed font-semibold
-                        ${
-                          isDark
-                            ? "bg-gradient-to-bl from-green-600 to-cyan-800 text-white border border-purple-500/30"
-                            : "bg-gradient-to-bl from-white to-cyan-100 text-slate-900 border border-indigo-200"
+                        ${isDark
+                          ? "bg-gradient-to-bl from-green-600 to-cyan-800 text-white border border-purple-500/30"
+                          : "bg-gradient-to-bl from-white to-cyan-100 text-slate-900 border border-indigo-200"
                         }
                         `}
                       style={{ wordWrap: "break-word" }}
@@ -1092,11 +1253,10 @@ If NO good match exists, respond with:
                 return (
                   <div key={i} className="flex justify-center animate-fade-in">
                     <div
-                      className={`px-4 py-2 rounded-full text-xs font-medium ${
-                        isDark
+                      className={`px-4 py-2 rounded-full text-xs font-medium ${isDark
                           ? "bg-indigo-500/20 text-indigo-200 border border-indigo-500/30"
                           : "bg-indigo-100 text-indigo-700 border border-indigo-200"
-                      }`}
+                        }`}
                     >
                       {msg.text}
                     </div>
@@ -1109,11 +1269,10 @@ If NO good match exists, respond with:
                   className="flex justify-start animate-slide-in-left"
                 >
                   <div
-                    className={`max-w-[90%] px-4 py-2 rounded-2xl rounded-tl-md shadow-md text-sm ${
-                      isDark
+                    className={`max-w-[90%] px-4 py-2 rounded-2xl rounded-tl-md shadow-md text-sm ${isDark
                         ? "bg-slate-800/80 text-slate-100 border border-slate-700/50"
                         : "bg-white text-slate-800 border border-slate-200"
-                    }`}
+                      }`}
                     style={{
                       wordWrap: "break-word",
                       whiteSpace: "preserve-breaks",
@@ -1128,11 +1287,10 @@ If NO good match exists, respond with:
             {loading && (
               <div className="flex justify-start animate-pulse">
                 <div
-                  className={`px-4 py-2.5 rounded-2xl rounded-tl-md flex items-center gap-2 text-sm ${
-                    isDark
+                  className={`px-4 py-2.5 rounded-2xl rounded-tl-md flex items-center gap-2 text-sm ${isDark
                       ? "bg-slate-800/80 text-slate-300 border border-slate-700/50"
                       : "bg-white text-slate-600 border border-slate-200"
-                  }`}
+                    }`}
                 >
                   <div className="flex gap-1">
                     <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce"></div>
@@ -1154,11 +1312,10 @@ If NO good match exists, respond with:
           </div>
 
           <div
-            className={`px-6 py-4 ${
-              isDark
+            className={`px-6 py-4 ${isDark
                 ? "bg-gradient-to-tl from-gray-900/40 to-cyan-700/40 backdrop-blur-xl border-b border-white/10"
                 : "bg-white/60 backdrop-blur-xl border-t border-indigo-200/50"
-            }`}
+              }`}
           >
             <div className="flex gap-2">
               <input
@@ -1166,22 +1323,20 @@ If NO good match exists, respond with:
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && !loading && handleSend()}
-                placeholder="Ask me to organize your tabs or search for one..."
+                placeholder="Search tabs, open sites, or organize..."
                 disabled={loading}
-                className={`flex-1 px-4 py-3 rounded-xl text-sm transition-all outline-none focus:ring-2 focus:ring-cyan-500 ${
-                  isDark
+                className={`flex-1 px-4 py-3 rounded-xl text-sm transition-all outline-none focus:ring-2 focus:ring-cyan-500 ${isDark
                     ? "bg-slate-800/50 border border-slate-700 text-white placeholder-slate-400 "
                     : "bg-white border border-slate-300 text-slate-900 placeholder-slate-400 "
-                } ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
+                  } ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
               />
               <button
                 onClick={handleSend}
                 disabled={loading || !prompt.trim()}
-                className={`px-5 py-3 rounded-xl font-semibold transition-all  ${
-                  loading || !prompt.trim()
+                className={`px-5 py-3 rounded-xl font-semibold transition-all  ${loading || !prompt.trim()
                     ? "bg-slate-400/30 text-slate-500 cursor-not-allowed"
                     : "bg-gradient-to-r from-green-500 to-green-600 cursor-pointer text-white hover:shadow-lg hover:scale-105"
-                }`}
+                  }`}
                 title="Send message"
               >
                 <span className="text-lg">
@@ -1241,15 +1396,11 @@ If NO good match exists, respond with:
           background: transparent;
         }
         .overflow-y-auto::-webkit-scrollbar-thumb {
-          background: ${
-            isDark ? "rgba(139, 92, 246, 0.3)" : "rgba(99, 102, 241, 0.3)"
-          };
+          background: ${isDark ? "rgba(139, 92, 246, 0.3)" : "rgba(99, 102, 241, 0.3)"};
           border-radius: 10px;
         }
         .overflow-y-auto::-webkit-scrollbar-thumb:hover {
-          background: ${
-            isDark ? "rgba(139, 92, 246, 0.5)" : "rgba(99, 102, 241, 0.5)"
-          };
+          background: ${isDark ? "rgba(139, 92, 246, 0.5)" : "rgba(99, 102, 241, 0.5)"};
         }
       `}</style>
     </div>

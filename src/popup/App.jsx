@@ -11,7 +11,6 @@ import {
   systemPrompt,
   ungroupTabs,
 } from "../utils";
-import ReactMarkdown from "react-markdown";
 import { BotMessageSquare } from "lucide-react";
 import { Sun } from "lucide-react";
 import { Moon } from "lucide-react";
@@ -24,6 +23,54 @@ import { Pencil } from "lucide-react";
 import { Trash2 } from "lucide-react";
 import ToggleButton from "../components/ToggleButton";
 import LanguageDropdown from "../components/DropdownButton";
+import { memo } from "react";
+
+// NEW, MEMOIZED COMPONENT - Place this OUTSIDE (above) your App component
+const TranslatedText = memo(function TranslatedText({
+  msg,
+  language,
+  translatorSession,
+}) {
+  // Default the state to the original English text
+  const [translated, setTranslated] = useState(msg?.text || "...");
+
+  useEffect(() => {
+    // 1. Skip if no message, or if translator session isn't ready
+    if (!msg?.text || !translatorSession) {
+      setTranslated(msg.text); // Ensure it shows original text
+      return;
+    }
+
+    // 2. If target language is English, just use the original text
+    if (language.code === "en") {
+      setTranslated(msg.text);
+      return;
+    }
+
+    let isCancelled = false; // Prevent race conditions
+
+    (async () => {
+      try {
+        // 3. Use the passed 'translatorSession' prop
+        const result = await translatorSession.translate(msg.text);
+        if (!isCancelled) setTranslated(result);
+      } catch (err) {
+        console.error("Translation error:", err);
+        // 4. Fallback to original text if translation fails
+        if (!isCancelled) setTranslated(msg.text);
+      }
+    })();
+
+    // Cleanup if component unmounts
+    return () => {
+      isCancelled = true;
+    };
+    // 5. KEY: Depend on the session object, not a ref
+  }, [msg?.text, language, translatorSession]);
+
+  // Render the state, which is guaranteed to be either translated or the original
+  return <div>{translated}</div>;
+});
 
 export default function App() {
   const [title, setTitle] = useState("AI TABS");
@@ -45,11 +92,11 @@ export default function App() {
   const [renamingGroup, setRenamingGroup] = useState(null);
   const [newGroupName, setNewGroupName] = useState("");
   const [enabled, setEnabled] = useState(true);
-  const [language, setLanguage] = useState("en");
+  const [language, setLanguage] = useState({ name: "English", code: "en" });
   const sessionRef = useRef(null);
   const chatEndRef = useRef(null);
   const proofreaderRef = useRef(null);
-  const languageChangeSessionRef = useRef(null);
+  const [languageSession, setLanguageSession] = useState(null);
 
   useEffect(() => {
     chrome.storage.local.get("autoGroupingEnabled", (data) => {
@@ -109,28 +156,65 @@ export default function App() {
 
   // Handle language change
   const onChangeLanguage = async (lang) => {
-    setLanguage(lang);
-    await initializeLanguageChangeAI(lang);
-    try {
-      if (languageChangeSessionRef.current) {
-        setTitle(
-          await languageChangeSessionRef.current.translate("AI TAB MANAGER")
-        );
+    // capture the previous language code BEFORE updating state
+    const prevLangCode = language?.code ?? "en";
 
-        setActive(
-          await languageChangeSessionRef.current.translate("Auto-Active")
-        );
-        setTabsText(
-          await languageChangeSessionRef.current.translate("Tabs Open")
-        );
-        setGroup(await languageChangeSessionRef.current.translate("Groups"));
-        setHelp(await languageChangeSessionRef.current.translate("Help"));
-        setOrganise(
-          await languageChangeSessionRef.current.translate("Organise Now")
-        );
-        setClear(
-          await languageChangeSessionRef.current.translate("Clear Chat")
-        );
+    setLanguage(lang); // Update the language state
+
+    // --- NEW LOGIC: Handle switching TO English ---
+    if (lang.code === "en") {
+      setLanguageSession(null); // Clear the translator session
+
+      // Manually reset all UI text to English
+      setTitle("AI TAB MANAGER");
+      setActive("Auto-Active");
+      setTabsText("Tabs Open");
+      setGroup("Groups");
+      setHelp("Help");
+      setOrganise("Organise Now");
+      setClear("Clear Chat");
+      return; // Stop here. We don't need to create a translator.
+    }
+    // --- END NEW LOGIC ---
+
+    // If not switching to English, create a new translator using the current source language
+    // (use prevLangCode so source language follows what was active before the change)
+    const newLanguageSession = await initializeLanguageChangeAI(
+      lang,
+      prevLangCode
+    );
+
+    console.log("Selected Language:", lang);
+    console.log("Previous Language Code (used as source):", prevLangCode);
+    console.log("Language Session:", newLanguageSession);
+
+    try {
+      if (newLanguageSession) {
+        const [
+          newTitle,
+          newActive,
+          newTabsText,
+          newGroup,
+          newHelp,
+          newOrganise,
+          newClear,
+        ] = await Promise.all([
+          newLanguageSession.translate("AI TAB MANAGER"),
+          newLanguageSession.translate("Auto-Active"),
+          newLanguageSession.translate("Tabs Open"),
+          newLanguageSession.translate("Groups"),
+          newLanguageSession.translate("Help"),
+          newLanguageSession.translate("Organise Now"),
+          newLanguageSession.translate("Clear Chat"),
+        ]);
+
+        setTitle(newTitle);
+        setActive(newActive);
+        setTabsText(newTabsText);
+        setGroup(newGroup);
+        setHelp(newHelp);
+        setOrganise(newOrganise);
+        setClear(newClear);
       }
     } catch (error) {
       console.error("Language change failed:", error);
@@ -193,18 +277,32 @@ export default function App() {
     }
   };
 
-  // Initalize language change AI
-  const initializeLanguageChangeAI = async (language) => {
+  // Initialize language change AI — now accepts sourceLanguage
+  const initializeLanguageChangeAI = async (
+    targetLanguage,
+    sourceLanguage = "en"
+  ) => {
     try {
       if (typeof Translator !== "undefined") {
-        languageChangeSessionRef.current = await Translator.create({
-          sourceLanguage: "en",
-          targetLanguage: language.code,
+        const session = await Translator.create({
+          sourceLanguage: sourceLanguage,
+          targetLanguage: targetLanguage.code,
         });
-        console.log("✅ Language Change AI initialized");
+        console.log(
+          "✅ Language Change AI initialized (",
+          sourceLanguage,
+          "→",
+          targetLanguage.code,
+          ")"
+        );
+        setLanguageSession(session); // <-- Set state to trigger re-render for chat
+        return session; // <-- Return session for immediate use
       }
+      return null;
     } catch (error) {
-      console.error("❌ Language Change AI initialization failed:", err);
+      console.error("❌ Language Change AI initialization failed:", error);
+      setLanguageSession(null); // Set to null on error
+      return null;
     }
   };
 
@@ -579,14 +677,14 @@ If NO good match exists, respond with:
         (tab) => `Tab ${tab.id}: "${tab.title}" - ${new URL(tab.url).hostname}`
       )
       .join("\n");
-      const response = await sessionRef.current.prompt(`Analyze ${
-        tabs.length
-      } tabs and group them logically.
+    const response = await sessionRef.current.prompt(`Analyze ${
+      tabs.length
+    } tabs and group them logically.
         Tabs: ${tabsList}
         User wants: "${userRequest}"
         Respond with ONLY JSON: {"groups": {"Name": [ids]}, "explanation": "text"}
         All IDs: ${tabs.map((t) => t.id).join(", ")}`);
-      return parseAIResponse(response, tabs);
+    return parseAIResponse(response, tabs);
   };
 
   // Handle ungrouping of tabs
@@ -800,36 +898,6 @@ If NO good match exists, respond with:
     setMessages([]);
     chrome.storage.local.remove("chatMessages");
   };
-
-  function TranslatedText({ msg }) {
-    const [translated, setTranslated] = useState("");
-
-    useEffect(() => {
-      // Skip if message text not ready yet
-      if (!msg?.text) return;
-
-      let isCancelled = false; // to prevent race conditions
-
-      (async () => {
-        try {
-          const result = await languageChangeSessionRef.current.translate(
-            msg.text
-          );
-          if (!isCancelled) setTranslated(result);
-        } catch (err) {
-          console.error("Translation error:", err);
-        }
-      })();
-
-      // Cleanup if component unmounts
-      return () => {
-        isCancelled = true;
-      };
-    }, [msg?.text]);
-
-    return <div>{translated || msg?.text || "..."}</div>;
-  }
-  
 
   console.log("Selected Language:", language.name);
 
@@ -1179,7 +1247,13 @@ If NO good match exists, respond with:
                         `}
                       style={{ wordWrap: "break-word" }}
                     >
-                      {<TranslatedText msg={msg} />}
+                      {
+                        <TranslatedText
+                          msg={msg}
+                          language={language}
+                          translatorSession={languageSession}
+                        />
+                      }
                     </div>
                   </div>
                 );
@@ -1215,7 +1289,13 @@ If NO good match exists, respond with:
                       whiteSpace: "preserve-breaks",
                     }}
                   >
-                    {<TranslatedText msg={msg} />}
+                    {
+                      <TranslatedText
+                        msg={msg}
+                        language={language}
+                        translatorSession={languageSession}
+                      />
+                    }
                   </div>
                 </div>
               );

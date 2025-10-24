@@ -68,7 +68,7 @@
         {/* Dropdown Menu */}
         {isOpen && (
           <div
-            className={`absolute top-full -left-30   mt-2 w-56 rounded-xl shadow-2xl border overflow-hidden z-50 animate-dropdown
+            className={`absolute top-full -left-30 mt-2 w-56 rounded-xl shadow-2xl border overflow-hidden z-10 animate-dropdown
               ${
                 isDark
                   ? "bg-slate-800 border-slate-700"

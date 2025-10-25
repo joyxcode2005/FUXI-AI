@@ -1,188 +1,260 @@
-// src/content/extractPageText.js
+// src/content/extractPageText.js - FINAL VERSION (Unchanged)
 (function () {
   let hasInitialized = false;
   let hasSentInitialSnippet = false;
+  let debounceTimeout = null; // For debouncing DOM changes
 
   function extract() {
     try {
-      // Extract meaningful content
+      // Prioritize specific content elements
+      const mainContentSelectors = [
+        'article',
+        'main',
+        '[role="main"]',
+        '.content', // Common class names
+        '.main-content',
+        '#content', // Common IDs
+        '#main'
+      ];
+      let mainContentEl = null;
+      for (const selector of mainContentSelectors) {
+          mainContentEl = document.querySelector(selector);
+          if (mainContentEl) break;
+      }
+
+      // Extract Headers
       const h1 = document.querySelector("h1")?.innerText?.trim() || "";
-      const h2Elements = Array.from(document.querySelectorAll("h2"))
-        .slice(0, 3)
+      // Get first few H2s within the main content if found, otherwise from body
+      const scope = mainContentEl || document.body;
+      const h2Elements = Array.from(scope.querySelectorAll("h2"))
+        .slice(0, 4) // Get a few more H2s
         .map(el => el.innerText?.trim())
         .filter(Boolean)
-        .join(" ");
-      
+        .join(" | "); // Use a separator
+
+      // Meta tags
       const metaDesc = document.querySelector('meta[name="description"]')?.content?.trim() || "";
       const metaKeywords = document.querySelector('meta[name="keywords"]')?.content?.trim() || "";
       
-      // Special handling for Gmail and email apps
-      let emailSubject = "";
-      let emailContent = "";
-      
-      // Gmail selectors - enhanced
-      const gmailSubject = document.querySelector('[data-message-id] h2')?.innerText || 
-                          document.querySelector('.hP')?.innerText ||
-                          document.querySelector('h2.hP')?.innerText || "";
-      const gmailBody = document.querySelector('[data-message-id] .a3s')?.innerText ||
-                       document.querySelector('.ii.gt')?.innerText ||
-                       document.querySelector('div[data-message-id] div.a3s')?.innerText || "";
-      
-      if (gmailSubject || gmailBody) {
-        emailSubject = gmailSubject;
-        emailContent = gmailBody.slice(0, 1500);
-      }
-      
-      // Get main content - prioritize article, main, or body
-      let mainContent = "";
-      
-      if (emailSubject || emailContent) {
-        // For emails, prioritize email content
-        mainContent = `${emailSubject} ${emailContent}`;
+      // --- REVISED GMAIL + MAIN CONTENT LOGIC ---
+      let textContent = "";
+
+      if (window.location.hostname === "mail.google.com") {
+          // *** NEW GMAIL STRATEGY: Grab all text from the main pane ***
+          // This will get inbox list (senders, subjects, previews) OR the open email
+          // Gmail's main content area is almost always [role="main"]
+          const gmailPane = document.querySelector('[role="main"]') || document.body;
+          
+          // Clone and remove junk, but be less aggressive than before
+          const clone = gmailPane.cloneNode(true);
+          // Remove things that are definitely not useful content
+          clone.querySelectorAll('nav, header, script, style, button, form, [role="navigation"], [role="banner"], [aria-hidden="true"]').forEach(el => el.remove());
+          textContent = clone.innerText || "";
+          
+          // If we're on the inbox, the H1 is "Inbox", which is useless.
+          // The title "Inbox (123) - user@gmail.com" is much better.
+          if (h1.toLowerCase().includes("inbox")) {
+             textContent = `${document.title} ${textContent}`;
+          }
+
+      } else if (mainContentEl) {
+          // Original logic for other sites
+          const clone = mainContentEl.cloneNode(true);
+          clone.querySelectorAll('nav, header, footer, aside, script, style, button, form, [role="navigation"], [role="banner"], [role="contentinfo"], [aria-hidden="true"]').forEach(el => el.remove());
+          textContent = clone.innerText || "";
       } else {
-        const article = document.querySelector("article");
-        const main = document.querySelector("main");
-        const contentDiv = document.querySelector('[role="main"]');
-        
-        if (article) {
-          mainContent = article.innerText || "";
-        } else if (main) {
-          mainContent = main.innerText || "";
-        } else if (contentDiv) {
-          mainContent = contentDiv.innerText || "";
-        } else {
-          mainContent = document.body?.innerText || "";
-        }
+          // Original fallback to body
+          const bodyClone = document.body.cloneNode(true);
+           bodyClone.querySelectorAll('nav, header, footer, aside, script, style, button, form, [role="navigation"], [role="banner"], [role="contentinfo"], [aria-hidden="true"], .sidebar, .menu, #sidebar, #menu').forEach(el => el.remove());
+          textContent = bodyClone.innerText || document.body?.innerText || "";
       }
-      
-      // Clean and truncate
-      mainContent = mainContent
-        .replace(/\s+/g, " ")
-        .replace(/[^\w\s.,!?@#-]/g, "")
+      // --- END REVISED LOGIC ---
+
+
+      // Clean and truncate main text content
+      textContent = textContent
+        .replace(/(\r\n|\n|\r){3,}/g, "\n\n") // Reduce multiple newlines
+        .replace(/\s{2,}/g, " ") // Reduce multiple spaces
+        .replace(/[^\p{L}\p{N}\p{P}\p{Z}]/gu, '') // Remove weird characters, keep punctuation/spaces
         .trim()
-        .slice(0, 3500);
-      
-      // Combine all content with email priority
-      const snippet = emailSubject 
-        ? [emailSubject, emailContent, h1, metaDesc, mainContent]
-            .filter(Boolean)
-            .join(" — ")
-        : [h1, h2Elements, metaDesc, metaKeywords, mainContent]
-            .filter(Boolean)
-            .join(" — ");
-      
-      return snippet.slice(0, 4000);
+        .slice(0, 3000); // Main content limit
+
+      // Combine relevant parts, giving priority based on availability
+      // We removed the specific email vars because textContent now includes everything
+      const parts = [
+          h1,
+          h2Elements,
+          metaDesc,
+          textContent, // Main cleaned text
+          metaKeywords // Keywords last, lower priority
+        ].filter(Boolean); // Remove empty parts
+
+      const snippet = parts.join(" — ").slice(0, 4000); // Combine and apply final length limit
+
+      return snippet;
     } catch (err) {
-      console.error("Extract error:", err);
-      return "";
+      console.error("Content script extract error:", err);
+      return ""; // Return empty string on error
     }
   }
 
   function sendSnippet() {
+    // Avoid sending if a send is already queued by debounce
+    if (debounceTimeout) return;
+
     const snippet = extract();
-    if (!snippet || snippet.length < 50) {
-      console.log("Content too short, skipping");
+
+    // --- DEBUGGING: Log the snippet ---
+    // This will show up in the Gmail tab's developer console
+    console.log(`[AI Tab Mgr] Extracted Snippet (${snippet.length} chars):`, snippet.slice(0, 500) + "...");
+    // --- END DEBUGGING ---
+
+    // Use a slightly higher minimum length to avoid sending very sparse pages
+    if (!snippet || snippet.length < 150) {
+      console.log("[AI Tab Mgr] Content too short (<150 chars) or empty, skipping send.");
       return;
     }
 
-    if (chrome.runtime?.id) {
-      chrome.runtime.sendMessage(
-        {
-          action: "pageSnippet",
-          snippetText: snippet,
-          url: window.location.href,
-          title: document.title
-        },
-        (response) => {
-          if (chrome.runtime.lastError) {
-            console.log("Send content error:", chrome.runtime.lastError.message);
-          } else {
-            console.log("✅ Page content indexed successfully");
-            hasSentInitialSnippet = true;
+    if (!chrome.runtime?.id) {
+        // console.log("Runtime disconnected, cannot send snippet.");
+        return; // Avoid errors if extension context is lost
+    }
+
+    // console.log(`Sending snippet (${snippet.length} chars)...`); // Debug log
+    chrome.runtime.sendMessage(
+      {
+        action: "pageSnippet",
+        snippetText: snippet,
+        url: window.location.href, // Use current location
+        title: document.title // Use current title
+      },
+      (response) => {
+        if (chrome.runtime.lastError) {
+          // Don't log common connection errors excessively
+          if (!chrome.runtime.lastError.message?.includes("Receiving end does not exist")) {
+            console.warn("Error sending content snippet:", chrome.runtime.lastError.message);
           }
+        } else if (response?.ok) {
+          // console.log("✅ Snippet received by background."); // Confirmation log
+          hasSentInitialSnippet = true; // Mark as sent only on success
+        } else {
+           console.warn("Background script reported issue with snippet:", response?.error);
         }
-      );
-    }
+      }
+    );
   }
 
-  // Initialize
-  hasInitialized = true;
-  console.log("📄 Auto content indexing active");
-
-  // Listen for messages from background
-  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-    if (!msg || !msg.action) return;
-
-    if (msg.action === "sendPageSnippet") {
-      const snippet = extract();
-      if (!snippet || snippet.length < 50) {
-        sendResponse({ ok: false, error: "no snippet" });
-        return;
-      }
-      
-      chrome.runtime.sendMessage(
-        {
-          action: "pageSnippet",
-          snippetText: snippet,
-          url: window.location.href,
-          title: document.title
-        },
-        (bgResp) => {
-          sendResponse({ ok: !!(bgResp && bgResp.ok), bgResp });
-        }
-      );
-      return true;
-    }
-
-    if (msg.action === "ping") {
-      sendResponse({ ok: true, from: "content-script" });
-      return true;
-    }
-  });
-
-  // Auto-send on page load complete
-  if (document.readyState === "complete") {
-    setTimeout(sendSnippet, 1500);
-  } else {
-    document.addEventListener("readystatechange", () => {
-      if (document.readyState === "complete" && !hasSentInitialSnippet) {
-        setTimeout(sendSnippet, 1500);
-      }
-    });
+  // Debounced version of sendSnippet for mutation observer
+  function debouncedSendSnippet(delay) {
+      clearTimeout(debounceTimeout);
+      debounceTimeout = setTimeout(() => {
+          debounceTimeout = null; // Clear timeout ID after execution
+          sendSnippet();
+      }, delay);
   }
 
-  // Auto-send when page becomes visible (tab switching)
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && hasInitialized) {
-      setTimeout(sendSnippet, 800);
-    }
-  });
 
-  // Backup: send after delay if nothing sent yet
-  setTimeout(() => {
-    if (hasInitialized && !hasSentInitialSnippet && document.readyState === "complete") {
-      sendSnippet();
-    }
-  }, 3000);
+  // --- Initialization and Event Listeners ---
+  if (!hasInitialized && window === top) { // Run only in top frame
+      hasInitialized = true;
+      console.log("📄 AI Tab Manager: Content script active in top frame.");
 
-  // For dynamic content (SPAs like Gmail), watch for changes
-  if (window.location.href.includes("mail.google.com")) {
-    let lastContent = "";
-    const observer = new MutationObserver(() => {
-      const currentContent = extract();
-      if (currentContent && currentContent !== lastContent && currentContent.length > 100) {
-        lastContent = currentContent;
-        setTimeout(sendSnippet, 1000);
-      }
-    });
-    
-    setTimeout(() => {
-      const targetNode = document.querySelector('[role="main"]') || document.body;
-      observer.observe(targetNode, { 
-        childList: true, 
-        subtree: true 
+      // Listener for direct requests from background/popup
+      chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+        if (msg?.action === "sendPageSnippet") {
+          // console.log("Received direct request to send page snippet.");
+          sendSnippet(); // Send immediately on request
+          sendResponse({ ok: true, message: "Snippet send initiated." }); // Respond quickly
+          return false; // Indicate sync response handled (though send is async)
+        }
+        if (msg?.action === "ping") {
+          sendResponse({ ok: true, from: "content-script" });
+          return false;
+        }
+        return false; // No async response for other messages
       });
-      console.log("📧 Gmail content observer active");
-    }, 2000);
+
+      // --- Triggering Logic ---
+      const trySendSnippet = (delay) => {
+          // Only schedule if not already sent and document is reasonably loaded
+          if (!hasSentInitialSnippet && (document.readyState === "interactive" || document.readyState === "complete")) {
+              // Use debounced send to avoid multiple rapid triggers
+              debouncedSendSnippet(delay);
+          }
+      };
+
+      // Send after initial load events
+      if (document.readyState === "complete") {
+        trySendSnippet(1500);
+      } else {
+        window.addEventListener("load", () => trySendSnippet(1500));
+      }
+
+      // Send when tab becomes visible (catches switching)
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") {
+           hasSentInitialSnippet = false; // Allow resending when tab becomes visible again
+          trySendSnippet(800);
+        }
+      });
+
+      // Backup send after a longer delay (useful for slow SPAs)
+      setTimeout(() => {
+          if (!hasSentInitialSnippet && document.readyState === "complete") {
+              // console.log("Backup trigger: Sending snippet.");
+              sendSnippet(); // Use non-debounced here
+          }
+      }, 7000); // Longer backup delay
+
+      // --- Mutation Observer for SPAs ---
+      // More robust observer targeting body, but debounced
+      let mutationObserver = null;
+      const setupObserver = () => {
+           if (mutationObserver) return; // Already set up
+
+           const targetNode = document.body;
+           if (!targetNode) return; // Body should exist
+
+           mutationObserver = new MutationObserver((mutationsList) => {
+               // Basic check to see if significant changes happened
+               let significantChange = false;
+               for(const mutation of mutationsList) {
+                   if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+                        // Check if added nodes are substantial (e.g., not just small attrs)
+                        if (Array.from(mutation.addedNodes).some(node => node.nodeType === Node.ELEMENT_NODE)) {
+                             significantChange = true;
+                             break;
+                        }
+                   } else if (mutation.type === 'characterData') {
+                       significantChange = true; // Text changes are often important
+                       break;
+                   }
+               }
+
+               if (significantChange) {
+                   // console.log("SPA Change detected, queueing snippet send.");
+                   hasSentInitialSnippet = false; // Allow resending after SPA navigation
+                   debouncedSendSnippet(2000); // Debounce SPA updates (2 seconds)
+               }
+           });
+
+           mutationObserver.observe(targetNode, {
+               childList: true,
+               subtree: true,
+               characterData: true // Observe text changes too
+           });
+           console.log("🔬 Mutation observer active on document body.");
+      };
+
+       // Set up observer after initial load settles
+       if (document.readyState === 'complete') {
+           setTimeout(setupObserver, 2000);
+       } else {
+            window.addEventListener('load', () => setTimeout(setupObserver, 2000));
+       }
+
+  } else if (window !== top) {
+      // console.log("📄 AI Tab Manager: Content script inactive in iframe.");
   }
+
 })();

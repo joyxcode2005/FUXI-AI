@@ -1,4 +1,4 @@
-// src/popup/App.jsx
+// src/popup/App.jsx - ENHANCED VERSION with Smart Open/Search Logic
 import { useState, useRef, useEffect } from "react";
 import {
   aiReadyMessage,
@@ -38,7 +38,7 @@ export default function App() {
   const [groups, setGroups] = useState([]);
   const [renamingGroup, setRenamingGroup] = useState(null);
   const [newGroupName, setNewGroupName] = useState("");
-  const [enabled, setEnabled] = useState(true); // auto-grouping
+  const [enabled, setEnabled] = useState(true);
 
   // refs
   const sessionRef = useRef(null);
@@ -54,7 +54,6 @@ export default function App() {
 
   // Load persisted messages, init AIs, counts, theme
   useEffect(() => {
-    // messages
     chrome.storage.local.get("chatMessages", (data) => {
       if (data.chatMessages && Array.isArray(data.chatMessages)) {
         setMessages(data.chatMessages);
@@ -73,7 +72,6 @@ export default function App() {
     initializeProofreaderAI();
     updateTabCount();
 
-    // Load theme
     chrome.storage.local.get("tabManagerTheme", (data) => {
       if (data.tabManagerTheme) {
         setIsDark(data.tabManagerTheme === "dark");
@@ -82,29 +80,22 @@ export default function App() {
 
     checkBackgroundAIStatus();
     chrome.storage.local.get("autoGroupingEnabled", (data) => {
-      setEnabled(data.autoGroupingEnabled ?? true); // default ON
+      setEnabled(data.autoGroupingEnabled ?? true);
     });
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Scroll to bottom on new message
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Save theme preference
   useEffect(() => {
     chrome.storage.local.set({ tabManagerTheme: isDark ? "dark" : "light" });
   }, [isDark]);
 
-  // Auto-handle help prompt
   useEffect(() => {
     if (prompt === "help") handleSend();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prompt]);
 
-  // Toggle auto-grouping feature
   const toggleFeature = () => {
     const newValue = !enabled;
     setEnabled(newValue);
@@ -124,7 +115,6 @@ export default function App() {
     }
   };
 
-  // Initialize AI session
   const initializeAI = async () => {
     try {
       if (typeof LanguageModel !== "undefined") {
@@ -146,7 +136,6 @@ export default function App() {
     }
   };
 
-  // Initialize Proofreader AI
   const initializeProofreaderAI = async () => {
     try {
       if (typeof Proofreader !== "undefined") {
@@ -160,7 +149,6 @@ export default function App() {
     }
   };
 
-  // Update tab count excluding special tabs
   const updateTabCount = async () => {
     try {
       const tabs = await chrome.tabs.query({ currentWindow: true });
@@ -179,23 +167,19 @@ export default function App() {
     }
   };
 
-  // Load groups from storage
   const loadGroups = async () => {
     const groupsList = await getAllGroups();
     setGroups(groupsList);
   };
 
-  // Add message to chat
   const addMessage = (text, sender) => {
     setMessages((prev) => {
       const newMessages = [...prev, { text, sender, timestamp: Date.now() }];
-      // Save messages to Chrome storage for persistence
       chrome.storage.local.set({ chatMessages: newMessages });
       return newMessages;
     });
   };
 
-  // Get all tabs with filtering options
   const getAllTabs = async (includeGrouped = false) => {
     const tabs = await chrome.tabs.query({ currentWindow: true });
     return tabs
@@ -223,43 +207,80 @@ export default function App() {
       }));
   };
 
-  // Detect command from user input
+  // ✨ ENHANCED: Improved command detection with Gmail specificity
   const detectCommand = (text) => {
-    const lower = text.toLowerCase();
+    const lower = text.toLowerCase().trim();
     if (lower === "help" || lower === "commands") return { type: "help" };
 
-    // Detect intent-based "open" commands with AI understanding
-    if (
-      lower.startsWith("open ") ||
-      lower.startsWith("visit ") ||
-      lower.startsWith("go to ") ||
-      lower.includes("open new tab") ||
-      lower.match(/^(launch|start)\s+/) ||
-      // Intent-based patterns
-      lower.includes("i want to") ||
-      lower.includes("take me to") ||
-      lower.includes("show me") ||
-      lower.match(/^(watch|play|listen|read|buy|shop|search for)/i)
-    ) {
-      const site = text
-        .replace(/^(open|visit|go to|launch|start|open new tab|open new tab for|open new tab with)\s+/i, "")
-        .replace(/^(i want to|take me to|show me)\s+/i, "")
-        .trim();
-      return { type: "openSite", site, originalText: text };
+    // Priority 1: Explicit OPEN commands
+    const explicitOpenPatterns = [
+      /^open\s+/i,
+      /^visit\s+/i,
+      /^go\s+to\s+/i,
+      /^launch\s+/i,
+      /^start\s+/i,
+      /^navigate\s+to\s+/i
+    ];
+    
+    if (explicitOpenPatterns.some(pattern => pattern.test(text))) {
+      const site = text.replace(/^(open|visit|go to|go|launch|start|navigate to)\s+/i, "").trim();
+      return { type: "smartOpen", site, originalText: text };
     }
 
+    // Priority 2: Gmail-specific patterns (ENHANCED)
+    const gmailPatterns = [
+      // "search mail from devpost" OR "search mail devpost"
+      /^(open|show|find|search)\s+(mail|email|gmail)\s+(?:from|about|with|by|regarding|to)?\s*(.+)/i,
+      // "mail from devpost" OR "mail devpost"
+      /^(mail|email|gmail)\s+(?:from|about|with|by|regarding|to)?\s*(.+)/i,
+      // "search devpost mail" OR "find my devpost email"
+      /^(open|show|find|search)\s+(.+)\s+(mail|email|gmail)$/i
+    ];
+    
+    for (const pattern of gmailPatterns) {
+      const match = text.match(pattern);
+      if (match) {
+        const emailContext = match[match.length - 1]; // Last capture group
+        return { 
+          type: "emailSearch", 
+          query: emailContext.trim(),
+          originalText: text 
+        };
+      }
+    }
+
+    // Priority 3: Explicit SEARCH commands
+    const explicitSearchPatterns = [
+      /^search\s+/i,
+      /^find\s+/i,
+      /^switch\s+to\s+/i,
+      /^where\s+is\s+/i,
+      /^looking\s+for\s+/i,
+      /^show\s+me\s+(the\s+)?(tab|page)\s+/i
+    ];
+    
+    if (explicitSearchPatterns.some(pattern => pattern.test(text))) {
+      const query = text
+        .replace(/^(search|find|switch to|where is|looking for|show me|the|tab|page)\s+/gi, "")
+        .trim();
+      return { type: "search", query: query || text };
+    }
+
+    // Priority 4: Group management commands
     if (
       lower.includes("list group") ||
       lower.includes("show group") ||
       lower === "groups"
     )
       return { type: "listGroups" };
+    
     if (
       lower.includes("rename") &&
       (lower.includes("to") || lower.includes("as"))
     ) {
-      const match = lower.match(
-        /rename\s+(?:group\s+)?["']?(.+?)["']?\s+(?:to|as)\s+["']?(.+?)["']?$/
+      // *** FIX: Run regex on original 'text', not 'lower', to preserve case ***
+      const match = text.match(
+        /rename\s+(?:group\s+)?["']?(.+?)["']?\s+(?:to|as)\s+["']?(.+?)["']?$/i
       );
       if (match)
         return {
@@ -268,10 +289,12 @@ export default function App() {
           newTitle: match[2].trim(),
         };
     }
+    
     if (lower.includes("ungroup") || lower.includes("remove group")) {
       const match = lower.match(/(?:ungroup|remove group)\s+["']?(.+?)["']?$/);
       if (match) return { type: "ungroup", title: match[1].trim() };
     }
+    
     if (
       (lower.includes("group all") || lower.includes("group everything")) &&
       lower.includes("as")
@@ -281,223 +304,323 @@ export default function App() {
       );
       if (match) return { type: "groupAll", title: match[1].trim() };
     }
-    // Enhanced search detection - match any natural language query
-    if (
-      lower.startsWith("search ") ||
-      lower.startsWith("find ") ||
-      lower.startsWith("switch to ") ||
-      lower.includes("where is") ||
-      lower.includes("looking for") ||
-      lower.match(/^find (my|the)\s+/i) ||
-      lower.match(/^show (my|the)\s+/i) ||
-      // Question patterns
-      lower.match(/^(what|which|where).*(tab|page|site|email|mail)/i) ||
-      // Email-specific searches
-      lower.match(/^(email|mail)\s+(from|about|with|regarding)/i) ||
-      // Direct queries without keywords
-      (!lower.includes("group") && !lower.includes("organize") &&
-        !lower.includes("categorize") && !lower.includes("sort") &&
-        !lower.includes("open") && !lower.includes("visit") &&
-        !lower.includes("i want") && !lower.includes("watch") &&
-        !lower.includes("play") && !lower.includes("listen") &&
-        text.split(" ").length <= 5 && text.length > 3)
-    ) {
-      const query = text
-        .replace(/^(search|find|switch to|where is|looking for)\s+/i, "")
-        .replace(/^(what|which|where).*?(tab|page|site|email|mail)\s+/i, "")
-        .replace(/^(show|find)\s+(my|the)\s+/i, "")
-        .trim();
-      return { type: "search", query: query || text };
-    }
+
+    // Priority 5: Organize command
     if (
       lower.includes("group") ||
       lower.includes("organize") ||
       lower.includes("categorize") ||
       lower.includes("sort") ||
       lower.includes("arrange")
-    )
+    ) {
       return { type: "organize" };
-    return { type: "chat" };
+    }
+
+    // Priority 6: Intent-based patterns (ENHANCED with specific mappings)
+    const intentPatterns = [
+      /^i\s+want\s+to\s+/i,
+      /^take\s+me\s+to\s+/i,
+      /^(watch|play|listen|read|buy|shop|check)\s+/i
+    ];
+    
+    if (intentPatterns.some(pattern => pattern.test(text))) {
+      let query = text.replace(/^(i want to|take me to)\s+/i, "").trim();
+      
+      // 🎯 ENHANCED: Specific intent mapping with priority
+      const intentMap = {
+        // Music - Spotify priority
+        "listen to music": "spotify",
+        "listen music": "spotify",
+        "play music": "spotify",
+        "music": "spotify",
+        
+        // Social Media - Specific sections
+        "watch reels": "instagram.com/reels",
+        "watch reel": "instagram.com/reels",
+        "instagram reels": "instagram.com/reels",
+        "watch shorts": "youtube.com/shorts",
+        "youtube shorts": "youtube.com/shorts",
+        "watch videos": "youtube",
+        "watch youtube": "youtube",
+        
+        // Entertainment
+        "watch movies": "netflix",
+        "watch movie": "netflix",
+        
+        // Information
+        "read news": "news.google.com",
+        "check news": "news.google.com",
+        
+        // Shopping
+        "shop": "amazon",
+        "buy": "amazon",
+        
+        // Communication
+        "check email": "gmail",
+        "check mail": "gmail",
+        "open email": "gmail",
+        "open mail": "gmail"
+      };
+      
+      // Check for exact matches first (longest to shortest)
+      const sortedIntents = Object.keys(intentMap).sort((a, b) => b.length - a.length);
+      for (const intent of sortedIntents) {
+        if (lower.includes(intent)) {
+          query = intentMap[intent];
+          break;
+        }
+      }
+      
+      return { type: "smartOpen", site: query, originalText: text, checkExisting: true };
+    }
+
+    // Priority 7: Question patterns (search tabs)
+    const questionPatterns = [
+      /^(what|which|where).*\b(tab|page|site)\b/i,
+      /^(show|display)\s+(my|the)\s+/i
+    ];
+    
+    if (questionPatterns.some(pattern => pattern.test(lower))) {
+      const query = text
+        .replace(/^(what|which|where|show|display|my|the|tab|page|site)\s+/gi, "")
+        .trim();
+      return { type: "search", query: query || text };
+    }
+
+    // Priority 8: Short ambiguous queries (2-4 words)
+    const words = text.trim().split(/\s+/);
+    if (words.length >= 2 && words.length <= 4) {
+      const hasUrl = /\.(com|org|net|io|dev|ai|co)/i.test(text);
+      const hasSiteName = /(github|stackoverflow|youtube|reddit|twitter|facebook|instagram|linkedin)/i.test(lower);
+      
+      if (hasUrl || hasSiteName) {
+        return { type: "smartOpen", site: text, originalText: text, checkExisting: true };
+      }
+      
+      // Otherwise, search existing tabs first
+      return { type: "search", query: text };
+    }
+
+    // Priority 9: Single word or long phrase - search first with web fallback
+    if (words.length === 1 || words.length > 4) {
+      return { type: "search", query: text, allowWebFallback: true };
+    }
+
+    // Default: Search tabs (safest)
+    return { type: "search", query: text, allowWebFallback: true };
   };
 
-  // ---------------- SITE OPENING HELPER ----------------
-  async function openNewSite(siteName, originalText = "") {
+  // 🆕 NEW: Gmail-specific search function
+  async function searchGmailTabs(emailContext) {
     try {
-      // Use AI to intelligently convert site name/intent to URL
-      if (sessionRef.current) {
-        const aiPrompt = `You are a smart URL resolver. Convert the user's intent or site name to the correct URL.
+      console.log(`📧 Searching Gmail tabs for: "${emailContext}"`);
+      
+      const tabs = await chrome.tabs.query({});
+      const gmailTabs = tabs.filter(tab => {
+        const url = tab.url || "";
+        return url.includes("mail.google.com") && !url.includes("chrome://");
+      });
 
-User said: "${originalText || siteName}"
+      if (gmailTabs.length === 0) {
+        return { found: false, error: "No Gmail tabs open" };
+      }
+      console.log(`Found ${gmailTabs.length} Gmail tabs`);
 
-RULES:
-1. Understand user INTENT, not just literal text
-2. For activity-based requests, open the right platform:
-   - "watch reels" → Instagram Reels
-   - "watch shorts" → YouTube Shorts
-   - "watch videos" → YouTube
-   - "listen to music" → Spotify or YouTube Music
-   - "read news" → News site
-   - "shop" → Amazon
-   - "buy something" → Amazon
-   - "search for X" → Google search for X
+      // Use Fuse to search through all tabs
+      const candidates = await queryFuse(emailContext, 20);
+      const gmailCandidates = candidates.filter(c => 
+        c.url && c.url.includes("mail.google.com")
+      );
 
-3. For site names, return the main URL:
-   - "google" → https://www.google.com
-   - "youtube" → https://www.youtube.com
-   - "github" → https://github.com
-   - "stackoverflow" → https://stackoverflow.com
-   - "instagram" → https://www.instagram.com
-   - "facebook" → https://www.facebook.com
-   - "twitter" or "x" → https://twitter.com
-   - "reddit" → https://www.reddit.com
-   - "linkedin" → https://www.linkedin.com
-   - "amazon" → https://www.amazon.com
-   - "netflix" → https://www.netflix.com
-   - "spotify" → https://www.spotify.com
-   - "gmail" → https://mail.google.com
-   - "outlook" → https://outlook.live.com
-   - "docs" → https://docs.google.com
-   - "drive" → https://drive.google.com
-   - "maps" → https://maps.google.com
-   - "translate" → https://translate.google.com
-   - "wikipedia" → https://www.wikipedia.org
-
-4. For specific platform features:
-   - "instagram reels" → https://www.instagram.com/reels/
-   - "youtube shorts" → https://www.youtube.com/shorts
-   - "twitter trending" → https://twitter.com/explore
-   - "reddit popular" → https://www.reddit.com/r/popular
-
-5. Always use https://
-6. If already a URL, return as-is
-7. For ambiguous searches, use Google: https://www.google.com/search?q=QUERY
-
-Return ONLY the URL, nothing else.`;
-
-        const aiResponse = await sessionRef.current.prompt(aiPrompt);
-        let url = aiResponse.trim().replace(/["\n]/g, "");
-
-        // Fallback URL construction if AI fails or returns invalid
-        if (!url.startsWith("http")) {
-          url = constructURLFromIntent(originalText || siteName);
+      if (gmailCandidates.length > 0) {
+        console.log(`[App.jsx] Found ${gmailCandidates.length} Gmail candidates via Fuse`);
+        let selectedTab = gmailCandidates[0];
+        
+        if (sessionRef.current && aiStatus === "ready" && gmailCandidates.length > 1) {
+          try {
+            const ranking = await rankWithAI(emailContext, gmailCandidates, 5, sessionRef);
+            if (ranking.confidence === "high" || ranking.confidence === "medium") {
+              selectedTab = gmailCandidates[ranking.chosenIndex];
+            }
+          } catch (err) {
+            console.error("AI ranking failed:", err);
+          }
         }
 
-        // Open the new tab
-        await chrome.tabs.create({ url, active: true });
-        return { success: true, url };
+        // Activate the selected Gmail tab
+        await chrome.tabs.update(selectedTab.id, { active: true });
+        await chrome.windows.update(selectedTab.windowId, { focused: true });
+        
+        return { 
+          found: true, 
+          title: selectedTab.title, 
+          url: selectedTab.url,
+          matchCount: gmailCandidates.length 
+        };
+      }
+
+      // *** NEW FALLBACK LOGIC ***
+      // If Fuse returned 0 results, manually check the snippets of all Gmail tabs
+      console.warn("[App.jsx] Fuse found no Gmail matches. Manually searching snippets...");
+      const contextLower = emailContext.toLowerCase();
+      const allCandidates = await queryFuse("", 1000); // Get ALL indexed tabs
+
+      let manualMatch = null;
+      for (const tab of gmailTabs) {
+        // Find the full indexed data for this Gmail tab
+        const indexedData = allCandidates.find(c => c.id === tab.id);
+        if (!indexedData) continue;
+
+        const title = (indexedData.title || "").toLowerCase();
+        const snippet = (indexedData.snippet || "").toLowerCase();
+
+        if (title.includes(contextLower) || snippet.includes(contextLower)) {
+          console.log(`[App.jsx] Manual fallback found match in Tab ${tab.id} (snippet: ${snippet.length} chars)`);
+          manualMatch = indexedData;
+          break; // Found the first match
+        }
+      }
+
+      if (manualMatch) {
+        await chrome.tabs.update(manualMatch.id, { active: true });
+        await chrome.windows.update(manualMatch.windowId, { focused: true });
+        return { 
+          found: true, 
+          title: manualMatch.title, 
+          url: manualMatch.url,
+          matchCount: 1,
+          method: "snippet-fallback"
+        };
+      }
+      // *** END NEW FALLBACK ***
+
+
+      return { found: false, error: "No matching Gmail found", gmailCount: gmailTabs.length };
+    } catch (err) {
+      console.error("Gmail search error:", err);
+      return { found: false, error: err.message };
+    }
+  }
+
+  // ✨ ENHANCED: Check if tab already exists before opening
+  async function checkExistingTab(query) {
+    try {
+      const tabs = await chrome.tabs.query({});
+      const lowerQuery = query.toLowerCase();
+      
+      // Exact domain match
+      const exactMatch = tabs.find(tab => {
+        const url = tab.url || "";
+        try {
+          const hostname = new URL(url).hostname.replace(/^www\./, "");
+          return hostname === lowerQuery || 
+                 hostname === `${lowerQuery}.com` ||
+                 url.includes(lowerQuery);
+        } catch {
+          return false;
+        }
+      });
+
+      if (exactMatch) {
+        await chrome.tabs.update(exactMatch.id, { active: true });
+        await chrome.windows.update(exactMatch.windowId, { focused: true });
+        return { 
+          found: true, 
+          title: exactMatch.title, 
+          url: exactMatch.url,
+          action: "switched"
+        };
+      }
+
+      return { found: false };
+    } catch (err) {
+      console.error("Check existing tab error:", err);
+      return { found: false };
+    }
+  }
+
+  // ✨ ENHANCED: Web search with existing tab check
+  async function performWebSearchAndOpen(query) {
+    try {
+      addMessage(`🔍 Searching the web for "${query}"...`, "system");
+      
+      const response = await chrome.runtime.sendMessage({
+        action: "webSearch",
+        query: query
+      });
+
+      if (response && response.success && response.url) {
+        await chrome.tabs.create({ url: response.url, active: true });
+        return {
+          success: true,
+          action: "web-search",
+          url: response.url,
+          title: response.title,
+          source: response.source,
+          isFirstResult: response.isFirstResult
+        };
       } else {
-        // Fallback without AI
-        const url = constructURLFromIntent(originalText || siteName);
-        await chrome.tabs.create({ url, active: true });
-        return { success: true, url };
+        const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+        await chrome.tabs.create({ url: searchUrl, active: true });
+        return {
+          success: true,
+          action: "web-search",
+          url: searchUrl,
+          title: `Search: ${query}`,
+          isFirstResult: false
+        };
       }
     } catch (err) {
-      console.error("Error opening site:", err);
+      console.error("performWebSearchAndOpen error:", err);
       return { success: false, error: err.message };
     }
   }
 
-  // Enhanced fallback URL construction with intent understanding
-  function constructURLFromIntent(text) {
-    const lower = text.toLowerCase().trim();
-
-    // Already a URL
-    if (lower.startsWith("http://") || lower.startsWith("https://")) {
-      return text;
-    }
-
-    // Intent-based mapping
-    const intentMap = {
-      // Video/Entertainment
-      "watch reels": "https://www.instagram.com/reels/",
-      "watch shorts": "https://www.youtube.com/shorts",
-      "watch videos": "https://www.youtube.com",
-      "watch youtube": "https://www.youtube.com",
-      "watch movies": "https://www.netflix.com",
-      "watch netflix": "https://www.netflix.com",
-
-      // Music
-      "listen to music": "https://www.spotify.com",
-      "listen music": "https://www.spotify.com",
-      "play music": "https://www.spotify.com",
-      "play songs": "https://www.spotify.com",
-
-      // Social Media
-      "check instagram": "https://www.instagram.com",
-      "check facebook": "https://www.facebook.com",
-      "check twitter": "https://twitter.com",
-      "check reddit": "https://www.reddit.com",
-
-      // Shopping
-      "shop": "https://www.amazon.com",
-      "buy something": "https://www.amazon.com",
-      "shopping": "https://www.amazon.com",
-
-      // Reading
-      "read news": "https://news.google.com",
-      "read articles": "https://news.google.com",
-
-      // Work
-      "check email": "https://mail.google.com",
-      "check gmail": "https://mail.google.com",
-      "check mail": "https://mail.google.com",
-      "write email": "https://mail.google.com",
-    };
-
-    // Check intent matches
-    for (const [intent, url] of Object.entries(intentMap)) {
-      if (lower.includes(intent)) {
-        return url;
+  // ✨ ENHANCED: Smart open with existing tab check
+  async function smartOpenSite(siteName, originalText = "", checkExisting = false) {
+    try {
+      console.log(`🚀 SmartOpen: "${siteName}" (checkExisting: ${checkExisting})`);
+      
+      // Check if tab already exists first
+      if (checkExisting) {
+        const existing = await checkExistingTab(siteName);
+        if (existing.found) {
+          return {
+            success: true,
+            action: "switched",
+            url: existing.url,
+            title: existing.title,
+            message: "Switched to existing tab"
+          };
+        }
       }
-    }
 
-    // Common sites mapping
-    const commonSites = {
-      "google": "https://www.google.com",
-      "youtube": "https://www.youtube.com",
-      "facebook": "https://www.facebook.com",
-      "twitter": "https://twitter.com",
-      "x": "https://x.com",
-      "instagram": "https://www.instagram.com",
-      "linkedin": "https://www.linkedin.com",
-      "github": "https://github.com",
-      "reddit": "https://www.reddit.com",
-      "amazon": "https://www.amazon.com",
-      "netflix": "https://www.netflix.com",
-      "spotify": "https://www.spotify.com",
-      "gmail": "https://mail.google.com",
-      "outlook": "https://outlook.live.com",
-      "yahoo": "https://www.yahoo.com",
-      "stackoverflow": "https://stackoverflow.com",
-      "stack overflow": "https://stackoverflow.com",
-      "wikipedia": "https://www.wikipedia.org",
-      "docs": "https://docs.google.com",
-      "drive": "https://drive.google.com",
-      "maps": "https://maps.google.com",
-      "news": "https://news.google.com",
-      "translate": "https://translate.google.com",
-      "reels": "https://www.instagram.com/reels/",
-      "shorts": "https://www.youtube.com/shorts",
-    };
+      // Send to background script for web search/opening
+      const response = await chrome.runtime.sendMessage({
+        action: "webSearch",
+        query: originalText || siteName
+      });
 
-    // Extract key site name from text
-    for (const [key, url] of Object.entries(commonSites)) {
-      if (lower.includes(key)) {
-        return url;
+      if (response && response.success && response.url) {
+        await chrome.tabs.create({ url: response.url, active: true });
+        return {
+          success: true,
+          action: "opened",
+          url: response.url,
+          title: response.title,
+          source: response.source,
+          isFirstResult: response.isFirstResult
+        };
+      } else {
+        return { success: false, error: response?.error || "Background script failed" };
       }
+    } catch (err) {
+      console.error("smartOpenSite error:", err);
+      return { success: false, error: err.message };
     }
-
-    // If it looks like a domain (contains dot)
-    if (lower.includes(".")) {
-      return `https://${lower}`;
-    }
-
-    // Otherwise, Google search
-    return `https://www.google.com/search?q=${encodeURIComponent(text)}`;
   }
 
-  // ---------------- FUSE + AI helpers ----------------
-  // queryFuse: asks background to run fuseSearch
+  // Query Fuse search index
   async function queryFuse(query, limit = 10) {
     if (!query || query.trim() === "") return [];
     return new Promise((resolve) => {
@@ -519,141 +642,197 @@ Return ONLY the URL, nothing else.`;
     });
   }
 
-  // rankWithAI: ask Gemini Nano to pick best candidate among top N
+  // ✨ ENHANCED: Better AI ranking with confidence thresholds
   async function rankWithAI(query, candidates = [], maxCandidates = 8, sessionRefLocal) {
-    if (!sessionRefLocal?.current) {
-      return { chosenIndex: 0, reason: "no ai session" };
+    if (!sessionRefLocal?.current || candidates.length === 0) {
+      return { chosenIndex: 0, reason: "no ai available", confidence: "none" };
     }
 
     const top = candidates.slice(0, maxCandidates);
-    if (top.length === 0) {
-      return { chosenIndex: -1, reason: "no candidates" };
-    }
-
-    // Build detailed candidate list emphasizing content differences
+    
     const candidateText = top.map((c, i) => {
-      const title = c.title || "";
+      const title = (c.title || "Untitled").slice(0, 100);
       const url = c.url || "";
-      const snippet = (c.snippet || "").slice(0, 500);
-
-      // Extract domain for context
+      const snippet = (c.snippet || "").slice(0, 300);
       let domain = "";
       try {
         domain = new URL(url).hostname.replace(/^www\./, "");
-      } catch { }
-
-      return `${i + 1}) "${title}"
+      } catch {}
+      
+      return `${i + 1}. "${title}"
+   URL: ${url}
    Domain: ${domain}
-   Content: ${snippet || "No content available"}`;
+   Preview: ${snippet || "No content available"}`;
     }).join("\n\n");
 
-    const promptText = `You are a smart tab-ranking assistant. The user wants to find a specific tab.
+    const promptText = `You are a precise tab-matching assistant. Match the user's query to the best tab.
 
 User query: "${query}"
 
 Available tabs:
 ${candidateText}
 
-INSTRUCTIONS:
-- Analyze the query to understand what the user is looking for
-- Match based on: topic relevance, keywords, content meaning (not just title similarity)
-- For ambiguous queries, prefer the most recently active or most relevant tab
-- Consider the full content snippet, not just the title
+MATCHING RULES:
+1. Prioritize exact keyword matches in title or domain
+2. Consider semantic meaning and context from preview text
+3. Domain relevance matters (e.g., github.com for code, stackoverflow.com for errors)
+4. Confidence levels:
+   - HIGH: Clear, unambiguous match with multiple signals
+   - MEDIUM: Good match but some uncertainty
+   - LOW: Weak match, might not be what user wants
 
-Return ONLY this JSON:
-{ "matchIndex": <1-based index>, "confidence": "low|medium|high", "reason": "<brief explanation>" }`;
+Respond with ONLY this JSON (no markdown):
+{
+  "matchIndex": <number 1-${top.length}>,
+  "confidence": "high|medium|low",
+  "reason": "<one sentence explanation>",
+  "signals": ["<key matching factors>"]
+}`;
 
     try {
       const raw = await sessionRefLocal.current.prompt(promptText);
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
-        return { chosenIndex: 0, reason: "no JSON in AI response", raw };
+        return { chosenIndex: 0, reason: "AI response parse error", confidence: "low" };
       }
+      
       const parsed = JSON.parse(jsonMatch[0]);
-      const idx = (parsed.matchIndex || 1) - 1;
+      const idx = Math.max(0, Math.min((parsed.matchIndex || 1) - 1, top.length - 1));
+      
+      const validConfidences = ["high", "medium", "low"];
+      const confidence = validConfidences.includes(parsed.confidence) 
+        ? parsed.confidence 
+        : "medium";
+      
       return {
-        chosenIndex: Math.max(0, Math.min(idx, top.length - 1)),
-        confidence: parsed.confidence,
-        reason: parsed.reason || ""
+        chosenIndex: idx,
+        confidence,
+        reason: parsed.reason || "AI matched this tab",
+        signals: parsed.signals || []
       };
     } catch (err) {
-      console.error("AI rank error:", err);
-      return { chosenIndex: 0, reason: "ai error" };
+      console.error("AI ranking error:", err);
+      return { chosenIndex: 0, reason: "AI error", confidence: "low" };
     }
   }
 
-  // searchAndOpen: full flow used by the UI when user searches
-  async function searchAndOpen(query) {
-    // Proofread first if available
+  // ✨ ENHANCED: Better search with options
+  async function searchAndOpen(query, options = {}) {
+    const { 
+      silent = false, 
+      allowWebFallback = false,
+      context = null 
+    } = options;
+
+    // Spell check
+    let searchQuery = query;
     if (proofreaderRef.current) {
       try {
         const proof = await proofreaderRef.current.proofread(query);
-        query = proof.correctedInput || query;
+        searchQuery = proof.correctedInput || query;
+        if (searchQuery !== query && !silent) {
+          console.log(`🔤 Corrected: "${query}" → "${searchQuery}"`);
+        }
       } catch (err) {
-        console.warn("Proofreader failed:", err);
+        if (!silent) console.warn("Proofreader failed:", err);
       }
     }
 
-    // 1) Get Fuse candidates
-    const candidates = await queryFuse(query, 12);
+    // Search Fuse
+    const candidates = await queryFuse(searchQuery, 15);
 
     if (!candidates || candidates.length === 0) {
-      // Fallback: basic keyword search in all tabs
-      console.log("🔎 No Fuse results, trying fallback...");
-      const q = query.toLowerCase();
+      if (!silent) console.log("🔍 No Fuse results, trying direct search...");
+      
+      // Direct tab search fallback
+      const q = searchQuery.toLowerCase();
       const all = await chrome.tabs.query({ currentWindow: true });
-      const match = all.find(t => {
+      const matches = all.filter(t => {
         const title = (t.title || "").toLowerCase();
         const url = (t.url || "").toLowerCase();
         return title.includes(q) || url.includes(q);
       });
 
-      if (match) {
+      if (matches.length > 0) {
+        matches.sort((a, b) => {
+          const aTitle = (a.title || "").toLowerCase();
+          const bTitle = (b.title || "").toLowerCase();
+          const aTitleMatch = aTitle.includes(q);
+          const bTitleMatch = bTitle.includes(q);
+          if (aTitleMatch && !bTitleMatch) return -1;
+          if (!aTitleMatch && bTitleMatch) return 1;
+          return 0;
+        });
+
+        const match = matches[0];
         try {
           await chrome.tabs.update(match.id, { active: true });
           await chrome.windows.update(match.windowId, { focused: true });
-          return { opened: true, method: "fallback", title: match.title, url: match.url };
+          return { 
+            opened: true, 
+            method: "direct-search", 
+            title: match.title, 
+            url: match.url,
+            matchCount: matches.length
+          };
         } catch (err) {
           console.error("Tab activation error:", err);
-          return { opened: false, error: "Could not switch to tab" };
         }
       }
+
+      if (allowWebFallback) {
+        return { 
+          opened: false, 
+          error: "No tabs found", 
+          shouldTryWeb: true,
+          query: searchQuery 
+        };
+      }
+      
       return { opened: false, error: "No matching tabs found" };
     }
 
-    console.log(`🔎 Found ${candidates.length} candidates from Fuse`);
+    if (!silent) console.log(`🔍 Found ${candidates.length} candidates`);
 
-    // 2) If AI available and multiple candidates, use it to rank
+    let selectedTab = candidates[0];
+    let method = "fuse";
+    let rankingInfo = {};
+
     if (sessionRef.current && aiStatus === "ready" && candidates.length > 1) {
       try {
-        const { chosenIndex, confidence, reason } = await rankWithAI(query, candidates, 8, sessionRef);
-        const chosen = candidates[Math.max(0, Math.min(chosenIndex, candidates.length - 1))];
-
-        if (chosen && chosen.id) {
-          console.log(`🤖 AI selected: ${chosen.title} (confidence: ${confidence})`);
-          console.log(`   Reason: ${reason}`);
-          try {
-            await chrome.tabs.update(chosen.id, { active: true });
-            await chrome.windows.update(chosen.windowId, { focused: true });
-            return { opened: true, method: "ai", title: chosen.title, url: chosen.url, confidence, reason };
-          } catch (err) {
-            console.error("Tab activation error:", err);
-            return { opened: false, error: "Tab no longer exists" };
+        const ranking = await rankWithAI(searchQuery, candidates, 10, sessionRef);
+        
+        if (ranking.confidence === "high" || ranking.confidence === "medium") {
+          selectedTab = candidates[ranking.chosenIndex];
+          method = "ai";
+          rankingInfo = {
+            confidence: ranking.confidence,
+            reason: ranking.reason,
+            signals: ranking.signals
+          };
+          if (!silent) {
+            console.log(`🤖 AI selected (${ranking.confidence}): ${selectedTab.title}`);
           }
+        } else {
+          if (!silent) console.log(`⚠️ AI confidence low, using top Fuse result`);
         }
       } catch (err) {
         console.error("AI ranking failed:", err);
-        // Continue to fallback below
       }
     }
 
-    // 3) Fallback: open top Fuse result
-    const top = candidates[0];
-    if (top && top.id) {
+    if (selectedTab && selectedTab.id) {
       try {
-        await chrome.tabs.update(top.id, { active: true });
-        await chrome.windows.update(top.windowId, { focused: true });
-        return { opened: true, method: "fuse", title: top.title, url: top.url };
+        await chrome.tabs.update(selectedTab.id, { active: true });
+        await chrome.windows.update(selectedTab.windowId, { focused: true });
+        return { 
+          opened: true, 
+          method, 
+          title: selectedTab.title, 
+          url: selectedTab.url,
+          ...rankingInfo,
+          candidateCount: candidates.length
+        };
       } catch (err) {
         console.error("Tab activation error:", err);
         return { opened: false, error: "Tab no longer exists" };
@@ -663,24 +842,46 @@ Return ONLY this JSON:
     return { opened: false, error: "No valid tabs found" };
   }
 
-  // ---------------- Existing grouping-related helpers (original logic) ----------------
+  // ✨ ENHANCED: AI grouping now uses indexed snippets
   const askAIToGroupTabs = async (tabs, userRequest) => {
     if (!sessionRef.current) throw new Error("AI session not available");
-    const tabsList = tabs
-      .map(
-        (tab) => `Tab ${tab.id}: "${tab.title}" - ${new URL(tab.url).hostname}`
-      )
-      .join("\n");
-    const response = await sessionRef.current.prompt(`Analyze ${tabs.length
-      } tabs and group them logically.
-      Tabs: ${tabsList}
-      User wants: "${userRequest}"
-      Respond with ONLY JSON: {"groups": {"Name": [ids]}, "explanation": "text"}
-      All IDs: ${tabs.map((t) => t.id).join(", ")}`);
+
+    // 1. Get ALL indexed tabs to find their snippets
+    const allIndexedTabs = await queryFuse("", 1000); // Get all indexed data
+    const indexedTabMap = new Map();
+    allIndexedTabs.forEach(t => indexedTabMap.set(t.id, t));
+
+    // 2. Build a rich list of tabs with snippets
+    const tabsList = tabs.map((tab) => {
+      const indexedData = indexedTabMap.get(tab.id);
+      const title = indexedData?.title || tab.title || "Untitled";
+      const snippet = indexedData?.snippet || "";
+      let domain = "unknown.com";
+      try {
+        domain = new URL(tab.url).hostname.replace(/^www\./, "");
+      } catch {}
+
+      // Provide more context to the AI
+      return `Tab ${tab.id}: "${title}"
+   Domain: ${domain}
+   Content: ${snippet.slice(0, 300) || "No content snippet available"}`; // Send first 300 chars of snippet
+    }).join("\n---\n"); // Use a clear separator
+
+    const aiPrompt = `Analyze ${tabs.length
+      } tabs and group them logically. Use the Title, Domain, and Content to find topics.
+      
+Tabs:
+${tabsList}
+
+User request: "${userRequest}"
+
+Respond with ONLY JSON: {"groups": {"Name": [ids]}, "explanation": "text"}
+All IDs: ${tabs.map((t) => t.id).join(", ")}`;
+
+    const response = await sessionRef.current.prompt(aiPrompt);
     return parseAIResponse(response, tabs);
   };
 
-  // Handle ungrouping of tabs
   const handleUngroup = async (groupTitle) => {
     const result = await ungroupTabs(groupTitle);
     if (result.success) {
@@ -695,13 +896,11 @@ Return ONLY this JSON:
     }
   };
 
-  // Handle renaming of group
   const handleRenameStart = (group) => {
     setRenamingGroup(group.title);
     setNewGroupName(group.title);
   };
 
-  // Submit rename group request
   const handleRenameSubmit = async (oldTitle) => {
     if (!newGroupName.trim() || newGroupName === oldTitle) {
       setRenamingGroup(null);
@@ -718,16 +917,17 @@ Return ONLY this JSON:
     setNewGroupName("");
   };
 
-  // ---------------- handleSend (main user input dispatcher) ----------------
+  // ✨ ENHANCED: Better user feedback in handleSend
   const handleSend = async () => {
     let text = prompt.trim();
     if (!text || loading) return;
+    
     addMessage(text, "user");
     setPrompt("");
     setLoading(true);
 
-    // Using proofreader api to correct input
     try {
+      // Spell check
       if (proofreaderRef.current) {
         try {
           const result = await proofreaderRef.current.proofread(text);
@@ -745,15 +945,44 @@ Return ONLY this JSON:
         return;
       }
 
-      // NEW: Handle opening sites
-      if (command.type === "openSite") {
-        const result = await openNewSite(command.site);
+      // 🆕 NEW: Gmail-specific search
+      if (command.type === "emailSearch") {
+        const result = await searchGmailTabs(command.query);
         setLoading(false);
+        
+        if (result.found) {
+          let msg = `✅ Opened Gmail: "${result.title}"`;
+          if (result.matchCount > 1) {
+            msg += `\n\n📊 Found ${result.matchCount} Gmail tabs`;
+          }
+          addMessage(msg, "bot");
+        } else {
+          addMessage(`❌ ${result.error}. ${result.gmailCount ? `Found ${result.gmailCount} Gmail tabs but none matched "${command.query}"` : 'Try opening Gmail first.'}`, "bot");
+        }
+        return;
+      }
+
+      // ✨ ENHANCED: Smart Open with existing tab check
+      if (command.type === "smartOpen") {
+        const result = await smartOpenSite(
+          command.site, 
+          command.originalText,
+          command.checkExisting || false
+        );
+        setLoading(false);
+        
         if (result.success) {
-          addMessage(
-            `✅ Opened new tab: ${result.url}`,
-            "bot"
-          );
+          let msg = "";
+          
+          if (result.action === "switched") {
+            msg = `🔄 Switched to existing tab: "${result.title}"`;
+          } else {
+            msg = `🌐 Opened: "${result.title || result.url}"`;
+            if (result.isFirstResult) msg += "\n\n✨ Top result";
+            if (result.source) msg += `\n🔍 Source: ${result.source}`;
+          }
+          
+          addMessage(msg, "bot");
           await updateTabCount();
         } else {
           addMessage(`❌ Could not open "${command.site}": ${result.error}`, "bot");
@@ -761,20 +990,47 @@ Return ONLY this JSON:
         return;
       }
 
+      // Enhanced Search
       if (command.type === "search") {
-        const result = await searchAndOpen(command.query);
+        const result = await searchAndOpen(command.query, {
+          allowWebFallback: command.allowWebFallback,
+          context: command.context
+        });
         setLoading(false);
+        
         if (result.opened) {
           let msg = `✅ Opened: "${result.title}"`;
+          
+          if (result.candidateCount > 1) {
+            msg += `\n\n📊 Found ${result.candidateCount} matches`;
+          }
           if (result.confidence) {
-            msg += `\n\n🎯 Match confidence: ${result.confidence}`;
+            const emoji = { high: "🎯", medium: "👍", low: "🤔" };
+            msg += `\n${emoji[result.confidence]} Confidence: ${result.confidence}`;
           }
           if (result.reason) {
             msg += `\n💡 ${result.reason}`;
           }
+          if (result.signals && result.signals.length > 0) {
+            msg += `\n🔑 Match: ${result.signals.join(", ")}`;
+          }
+          
           addMessage(msg, "bot");
+        } else if (result.shouldTryWeb) {
+          addMessage(`ℹ️ No tabs found. Searching the web...`, "system");
+          const webResult = await performWebSearchAndOpen(result.query || command.query);
+          
+          if (webResult.success) {
+            let webMsg = `🌐 Opened: "${webResult.title || webResult.url}"`;
+            if (webResult.isFirstResult) webMsg += "\n\n✨ Top result";
+            if (webResult.source) webMsg += `\n🔍 Source: ${webResult.source}`;
+            addMessage(webMsg, "bot");
+            await updateTabCount();
+          } else {
+            addMessage(`❌ Could not find results for "${command.query}"`, "bot");
+          }
         } else {
-          addMessage(`❌ No match found for "${command.query}"`, "bot");
+          addMessage(`❌ ${result.error}. Try: "open ${command.query}" to search web.`, "bot");
         }
         return;
       }
@@ -827,47 +1083,12 @@ Return ONLY this JSON:
       }
 
       if (command.type === "organize") {
-        const tabs = await getAllTabs(false);
-        if (tabs.length === 0) {
-          setLoading(false);
-          addMessage("⚠️ No groupable tabs. Open some webpages first!", "bot");
-          return;
-        }
-        if (!sessionRef.current || aiStatus !== "ready") {
-          setLoading(false);
-          addMessage(`⚠️ AI not available. Try: "group all as [name]"`, "bot");
-          return;
-        }
-        addMessage("🤖 AI analyzing tabs...", "system");
-        const aiResult = await askAIToGroupTabs(tabs, text);
-        if (!aiResult.valid) {
-          setLoading(false);
-          addMessage(`❌ AI error: ${aiResult.error}`, "bot");
-          return;
-        }
-        addMessage(`💡 ${aiResult.explanation}`, "bot");
-        const result = await createMultipleGroups(aiResult.groups);
-        setLoading(false);
-        if (result.success) {
-          let message = "";
-          if (result.groupsCreated > 0 && result.tabsAddedToExisting > 0) {
-            message = `✅ Created ${result.groupsCreated} new group(s) and added ${result.tabsAddedToExisting} tab(s) to existing groups!\n\n${result.groups.map((n) => `• ${n}`).join("\n")}`;
-          } else if (result.groupsCreated > 0) {
-            message = `✅ Created ${result.groupsCreated} groups!\n\n${result.groups.map((n) => `• ${n}`).join("\n")}`;
-          } else if (result.tabsAddedToExisting > 0) {
-            message = `✅ Added ${result.tabsAddedToExisting} tab(s) to existing groups!`;
-          }
-          addMessage(message, "bot");
-          await updateTabCount();
-          await loadGroups();
-          setShowGroupManager(true);
-        } else {
-          addMessage(`❌ Error: ${result.error}`, "bot");
-        }
+        // *** FIX: Call the same robust function as the "Organize Now" button ***
+        await quickOrganize();
         return;
       }
 
-      // Generic chat fallback
+      // Fallback for general chat
       if (sessionRef.current) {
         const response = await sessionRef.current.prompt(text);
         setLoading(false);
@@ -878,35 +1099,45 @@ Return ONLY this JSON:
       }
     } catch (err) {
       setLoading(false);
-      addMessage(`❌ Error: ${err.message}`, "bot");
+      // *** FIX: This ensures a valid string is always displayed ***
+      const errorMessage = err?.message || String(err) || "An unknown error occurred in handleSend";
+      console.error("Error in handleSend:", err);
+      addMessage(`❌ Error: ${errorMessage}`, "bot");
     }
   };
 
   const quickOrganize = async () => {
+    setLoading(true); // <-- NEW
+    addMessage("🤖 AI analyzing tabs...", "system"); // <-- NEW
     try {
       const response = await chrome.runtime.sendMessage({
         action: "organizeNow",
       });
+      
+      setLoading(false); // <-- NEW
       if (response && response.success) {
-        addMessage("✅ Background service is organizing your tabs!", "bot");
+        addMessage("✅ Organization complete! Groups are being updated.", "bot");
         setTimeout(async () => {
           await updateTabCount();
           await loadGroups();
-        }, 2000);
+          setShowGroupManager(true); // <-- NEW
+        }, 1500); 
       } else {
-        addMessage("⚠️ Could not trigger background organization", "bot");
+        // Use the error message from the background
+        const errorMsg = response?.error || "Could not trigger background organization";
+        addMessage(`❌ ${errorMsg}`, "bot");
       }
     } catch (err) {
-      addMessage(`❌ Error: ${err.message}`, "bot");
+      setLoading(false); // <-- NEW
+      const errorMsg = err?.message || String(err) || "A critical error occurred.";
+      addMessage(`❌ Error: ${errorMsg}`, "bot");
     }
   };
 
-  // Handle help command
   const handleHelp = () => {
     setPrompt("help");
   };
 
-  // Clear chat history
   const clearChat = () => {
     setMessages([]);
     chrome.storage.local.remove("chatMessages");
@@ -980,16 +1211,13 @@ Return ONLY this JSON:
             </div>
           </div>
 
-          {/* Header controls: Auto-group toggle, language, theme */}
           <div className="w-72 flex items-center gap-3">
-            {/* Auto-group toggle */}
             <ToggleButton
               enabled={enabled}
               onChange={toggleFeature}
               isDark={isDark}
             />
 
-            {/* Language and theme */}
             <LanguageDropdown
               isDark={isDark}
               onChange={(language) => {

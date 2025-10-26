@@ -1,4 +1,4 @@
-// src/popup/App.jsx - ENHANCED VERSION with Smart Open/Search Logic
+// src/popup/App.jsx - FINAL DYNAMIC VERSION
 import { useState, useRef, useEffect } from "react";
 import {
   aiReadyMessage,
@@ -366,33 +366,15 @@ export default function App() {
       }));
   };
 
-  // ✨ ENHANCED: Improved command detection with Gmail specificity
+  // ✨ ENHANCED: Replaced complex regex with a simpler dynamic system
   const detectCommand = (text) => {
     const lower = text.toLowerCase().trim();
     if (lower === "help" || lower === "commands") return { type: "help" };
 
-    // Priority 1: Explicit OPEN commands
-    const explicitOpenPatterns = [
-      /^open\s+/i,
-      /^visit\s+/i,
-      /^go\s+to\s+/i,
-      /^launch\s+/i,
-      /^start\s+/i,
-      /^navigate\s+to\s+/i
-    ];
-    
-    if (explicitOpenPatterns.some(pattern => pattern.test(text))) {
-      const site = text.replace(/^(open|visit|go to|go|launch|start|navigate to)\s+/i, "").trim();
-      return { type: "smartOpen", site, originalText: text };
-    }
-
-    // Priority 2: Gmail-specific patterns (ENHANCED)
+    // Priority 1: Gmail-specific patterns (Unchanged)
     const gmailPatterns = [
-      // "search mail from devpost" OR "search mail devpost"
       /^(open|show|find|search)\s+(mail|email|gmail)\s+(?:from|about|with|by|regarding|to)?\s*(.+)/i,
-      // "mail from devpost" OR "mail devpost"
       /^(mail|email|gmail)\s+(?:from|about|with|by|regarding|to)?\s*(.+)/i,
-      // "search devpost mail" OR "find my devpost email"
       /^(open|show|find|search)\s+(.+)\s+(mail|email|gmail)$/i
     ];
     
@@ -401,31 +383,14 @@ export default function App() {
       if (match) {
         const emailContext = match[match.length - 1]; // Last capture group
         return { 
-          type: "emailSearch", 
+          type: "emailSearch",
           query: emailContext.trim(),
           originalText: text 
         };
       }
     }
 
-    // Priority 3: Explicit SEARCH commands
-    const explicitSearchPatterns = [
-      /^search\s+/i,
-      /^find\s+/i,
-      /^switch\s+to\s+/i,
-      /^where\s+is\s+/i,
-      /^looking\s+for\s+/i,
-      /^show\s+me\s+(the\s+)?(tab|page)\s+/i
-    ];
-    
-    if (explicitSearchPatterns.some(pattern => pattern.test(text))) {
-      const query = text
-        .replace(/^(search|find|switch to|where is|looking for|show me|the|tab|page)\s+/gi, "")
-        .trim();
-      return { type: "search", query: query || text };
-    }
-
-    // Priority 4: Group management commands
+    // Priority 2: Group management commands (Unchanged)
     if (
       lower.includes("list group") ||
       lower.includes("show group") ||
@@ -437,7 +402,6 @@ export default function App() {
       lower.includes("rename") &&
       (lower.includes("to") || lower.includes("as"))
     ) {
-      // *** FIX: Run regex on original 'text', not 'lower', to preserve case ***
       const match = text.match(
         /rename\s+(?:group\s+)?["']?(.+?)["']?\s+(?:to|as)\s+["']?(.+?)["']?$/i
       );
@@ -464,7 +428,7 @@ export default function App() {
       if (match) return { type: "groupAll", title: match[1].trim() };
     }
 
-    // Priority 5: Organize command
+    // Priority 3: Organize command (Unchanged)
     if (
       lower.includes("group") ||
       lower.includes("organize") ||
@@ -475,98 +439,9 @@ export default function App() {
       return { type: "organize" };
     }
 
-    // Priority 6: Intent-based patterns (ENHANCED with specific mappings)
-    const intentPatterns = [
-      /^i\s+want\s+to\s+/i,
-      /^take\s+me\s+to\s+/i,
-      /^(watch|play|listen|read|buy|shop|check)\s+/i
-    ];
-    
-    if (intentPatterns.some(pattern => pattern.test(text))) {
-      let query = text.replace(/^(i want to|take me to)\s+/i, "").trim();
-      
-      // 🎯 ENHANCED: Specific intent mapping with priority
-      const intentMap = {
-        // Music - Spotify priority
-        "listen to music": "spotify",
-        "listen music": "spotify",
-        "play music": "spotify",
-        "music": "spotify",
-        
-        // Social Media - Specific sections
-        "watch reels": "instagram.com/reels",
-        "watch reel": "instagram.com/reels",
-        "instagram reels": "instagram.com/reels",
-        "watch shorts": "youtube.com/shorts",
-        "youtube shorts": "youtube.com/shorts",
-        "watch videos": "youtube",
-        "watch youtube": "youtube",
-        
-        // Entertainment
-        "watch movies": "netflix",
-        "watch movie": "netflix",
-        
-        // Information
-        "read news": "news.google.com",
-        "check news": "news.google.com",
-        
-        // Shopping
-        "shop": "amazon",
-        "buy": "amazon",
-        
-        // Communication
-        "check email": "gmail",
-        "check mail": "gmail",
-        "open email": "gmail",
-        "open mail": "gmail"
-      };
-      
-      // Check for exact matches first (longest to shortest)
-      const sortedIntents = Object.keys(intentMap).sort((a, b) => b.length - a.length);
-      for (const intent of sortedIntents) {
-        if (lower.includes(intent)) {
-          query = intentMap[intent];
-          break;
-        }
-      }
-      
-      return { type: "smartOpen", site: query, originalText: text, checkExisting: true };
-    }
-
-    // Priority 7: Question patterns (search tabs)
-    const questionPatterns = [
-      /^(what|which|where).*\b(tab|page|site)\b/i,
-      /^(show|display)\s+(my|the)\s+/i
-    ];
-    
-    if (questionPatterns.some(pattern => pattern.test(lower))) {
-      const query = text
-        .replace(/^(what|which|where|show|display|my|the|tab|page|site)\s+/gi, "")
-        .trim();
-      return { type: "search", query: query || text };
-    }
-
-    // Priority 8: Short ambiguous queries (2-4 words)
-    const words = text.trim().split(/\s+/);
-    if (words.length >= 2 && words.length <= 4) {
-      const hasUrl = /\.(com|org|net|io|dev|ai|co)/i.test(text);
-      const hasSiteName = /(github|stackoverflow|youtube|reddit|twitter|facebook|instagram|linkedin)/i.test(lower);
-      
-      if (hasUrl || hasSiteName) {
-        return { type: "smartOpen", site: text, originalText: text, checkExisting: true };
-      }
-      
-      // Otherwise, search existing tabs first
-      return { type: "search", query: text };
-    }
-
-    // Priority 9: Single word or long phrase - search first with web fallback
-    if (words.length === 1 || words.length > 4) {
-      return { type: "search", query: text, allowWebFallback: true };
-    }
-
-    // Default: Search tabs (safest)
-    return { type: "search", query: text, allowWebFallback: true };
+    // Priority 4: NEW DYNAMIC COMMAND
+    // If it's none of the above, treat it as a dynamic query.
+    return { type: "dynamicSearchOrOpen", query: text };
   };
 
   // 🆕 NEW: Gmail-specific search function
@@ -875,11 +750,10 @@ Respond with ONLY this JSON (no markdown):
     }
   }
 
-  // ✨ ENHANCED: Better search with options
+  // ✨ ENHANCED: Search function now returns "shouldTryWeb" on low confidence
   async function searchAndOpen(query, options = {}) {
     const { 
       silent = false, 
-      allowWebFallback = false,
       context = null 
     } = options;
 
@@ -938,17 +812,14 @@ Respond with ONLY this JSON (no markdown):
           console.error("Tab activation error:", err);
         }
       }
-
-      if (allowWebFallback) {
-        return { 
-          opened: false, 
-          error: "No tabs found", 
-          shouldTryWeb: true,
-          query: searchQuery 
-        };
-      }
       
-      return { opened: false, error: "No matching tabs found" };
+      // *** MODIFIED: Tell handleSend to try a web search ***
+      return { 
+        opened: false, 
+        error: "No tabs found", 
+        shouldTryWeb: true, 
+        query: searchQuery 
+      };
     }
 
     if (!silent) console.log(`🔍 Found ${candidates.length} candidates`);
@@ -961,6 +832,19 @@ Respond with ONLY this JSON (no markdown):
       try {
         const ranking = await rankWithAI(searchQuery, candidates, 10, sessionRef);
         
+        // *** NEW LOGIC: Check for LOW confidence ***
+        if (ranking.confidence === "low") {
+          if (!silent) console.log(`⚠️ AI confidence low, falling back to web.`);
+          return { 
+            opened: false, 
+            error: "No good match found", 
+            shouldTryWeb: true, 
+            query: searchQuery 
+          };
+        }
+        // *** END NEW LOGIC ***
+
+        // High or medium confidence, proceed as normal
         if (ranking.confidence === "high" || ranking.confidence === "medium") {
           selectedTab = candidates[ranking.chosenIndex];
           method = "ai";
@@ -973,7 +857,7 @@ Respond with ONLY this JSON (no markdown):
             console.log(`🤖 AI selected (${ranking.confidence}): ${selectedTab.title}`);
           }
         } else {
-          if (!silent) console.log(`⚠️ AI confidence low, using top Fuse result`);
+          if (!silent) console.log(`⚠️ AI confidence unknown, using top Fuse result`);
         }
       } catch (err) {
         console.error("AI ranking failed:", err);
@@ -998,8 +882,10 @@ Respond with ONLY this JSON (no markdown):
       }
     }
 
-    return { opened: false, error: "No valid tabs found" };
+    // Fallback if something went wrong
+    return { opened: false, error: "No valid tabs found", shouldTryWeb: true, query: searchQuery };
   }
+
 
   // ✨ ENHANCED: AI grouping now uses indexed snippets
   const askAIToGroupTabs = async (tabs, userRequest) => {
@@ -1104,7 +990,62 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
         return;
       }
 
-      // 🆕 NEW: Gmail-specific search
+      // ✨ NEW: DYNAMIC SEARCH-OR-OPEN LOGIC
+      if (command.type === "dynamicSearchOrOpen") {
+        // 1. First, try to SEARCH existing tabs
+        const searchResult = await searchAndOpen(command.query);
+
+        if (searchResult.opened) {
+          // 2. SUCCESS: We found and switched to an existing tab
+          setLoading(false);
+          let msg = `✅ Switched to: "${searchResult.title}"`;
+          
+          if (searchResult.candidateCount > 1) {
+            msg += `\n\n📊 Found ${searchResult.candidateCount} matches`;
+          }
+          if (searchResult.confidence) {
+            const emoji = { high: "🎯", medium: "👍", low: "🤔" };
+            msg += `\n${emoji[searchResult.confidence] || '🤔'} Confidence: ${searchResult.confidence}`;
+          }
+          if (searchResult.reason) {
+            msg += `\n💡 ${searchResult.reason}`;
+          }
+          
+          addMessage(msg, "bot");
+          return;
+        } 
+        
+        if (searchResult.shouldTryWeb) {
+          // 3. NO MATCH: No tab found, so now we OPEN a new one
+          addMessage(`ℹ️ No tabs found. Searching the web...`, "system");
+          
+          const openQuery = searchResult.query || command.query;
+          const openResult = await smartOpenSite(
+            openQuery,
+            openQuery,
+            false // 'checkExisting' is false, we already did it.
+          );
+          
+          setLoading(false);
+          if (openResult.success) {
+            let msg = `🌐 Opened: "${openResult.title || openResult.url}"`;
+            if (openResult.isFirstResult) msg += "\n\n✨ Top result";
+            if (openResult.source) msg += `\n🔍 Source: ${openResult.source}`;
+            addMessage(msg, "bot");
+            await updateTabCount();
+          } else {
+            addMessage(`❌ Could not open or find "${command.query}"`, "bot");
+          }
+          return;
+        }
+        
+        // 4. Fallback Error
+        setLoading(false);
+        addMessage(`❌ ${searchResult.error || "Could not find tab"}.`, "bot");
+        return;
+      }
+
+      // 🆕 RE-ADD: emailSearch (moved after dynamic search)
       if (command.type === "emailSearch") {
         const result = await searchGmailTabs(command.query);
         setLoading(false);
@@ -1117,79 +1058,6 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
           addMessage(msg, "bot");
         } else {
           addMessage(`❌ ${result.error}. ${result.gmailCount ? `Found ${result.gmailCount} Gmail tabs but none matched "${command.query}"` : 'Try opening Gmail first.'}`, "bot");
-        }
-        return;
-      }
-
-      // ✨ ENHANCED: Smart Open with existing tab check
-      if (command.type === "smartOpen") {
-        const result = await smartOpenSite(
-          command.site, 
-          command.originalText,
-          command.checkExisting || false
-        );
-        setLoading(false);
-        
-        if (result.success) {
-          let msg = "";
-          
-          if (result.action === "switched") {
-            msg = `🔄 Switched to existing tab: "${result.title}"`;
-          } else {
-            msg = `🌐 Opened: "${result.title || result.url}"`;
-            if (result.isFirstResult) msg += "\n\n✨ Top result";
-            if (result.source) msg += `\n🔍 Source: ${result.source}`;
-          }
-          
-          addMessage(msg, "bot");
-          await updateTabCount();
-        } else {
-          addMessage(`❌ Could not open "${command.site}": ${result.error}`, "bot");
-        }
-        return;
-      }
-
-      // Enhanced Search
-      if (command.type === "search") {
-        const result = await searchAndOpen(command.query, {
-          allowWebFallback: command.allowWebFallback,
-          context: command.context
-        });
-        setLoading(false);
-        
-        if (result.opened) {
-          let msg = `✅ Opened: "${result.title}"`;
-          
-          if (result.candidateCount > 1) {
-            msg += `\n\n📊 Found ${result.candidateCount} matches`;
-          }
-          if (result.confidence) {
-            const emoji = { high: "🎯", medium: "👍", low: "🤔" };
-            msg += `\n${emoji[result.confidence]} Confidence: ${result.confidence}`;
-          }
-          if (result.reason) {
-            msg += `\n💡 ${result.reason}`;
-          }
-          if (result.signals && result.signals.length > 0) {
-            msg += `\n🔑 Match: ${result.signals.join(", ")}`;
-          }
-          
-          addMessage(msg, "bot");
-        } else if (result.shouldTryWeb) {
-          addMessage(`ℹ️ No tabs found. Searching the web...`, "system");
-          const webResult = await performWebSearchAndOpen(result.query || command.query);
-          
-          if (webResult.success) {
-            let webMsg = `🌐 Opened: "${webResult.title || webResult.url}"`;
-            if (webResult.isFirstResult) webMsg += "\n\n✨ Top result";
-            if (webResult.source) webMsg += `\n🔍 Source: ${webResult.source}`;
-            addMessage(webMsg, "bot");
-            await updateTabCount();
-          } else {
-            addMessage(`❌ Could not find results for "${command.query}"`, "bot");
-          }
-        } else {
-          addMessage(`❌ ${result.error}. Try: "open ${command.query}" to search web.`, "bot");
         }
         return;
       }

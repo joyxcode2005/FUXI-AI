@@ -226,7 +226,7 @@ export default function App() {
         const availability = await LanguageModel.availability();
         if (availability === "available") {
           sessionRef.current = await LanguageModel.create({
-            initialPrompts:[{role:"system",content:systemPrompt}]
+            initialPrompts: [{ role: "system", content: systemPrompt }],
           });
           setAiStatus("ready");
         } else {
@@ -347,17 +347,17 @@ export default function App() {
     const gmailPatterns = [
       /^(open|show|find|search)\s+(mail|email|gmail)\s+(?:from|about|with|by|regarding|to)?\s*(.+)/i,
       /^(mail|email|gmail)\s+(?:from|about|with|by|regarding|to)?\s*(.+)/i,
-      /^(open|show|find|search)\s+(.+)\s+(mail|email|gmail)$/i
+      /^(open|show|find|search)\s+(.+)\s+(mail|email|gmail)$/i,
     ];
-    
+
     for (const pattern of gmailPatterns) {
       const match = text.match(pattern);
       if (match) {
         const emailContext = match[match.length - 1];
-        return { 
+        return {
           type: "emailSearch",
           query: emailContext.trim(),
-          originalText: text 
+          originalText: text,
         };
       }
     }
@@ -368,7 +368,7 @@ export default function App() {
       lower === "groups"
     )
       return { type: "listGroups" };
-    
+
     if (
       lower.includes("rename") &&
       (lower.includes("to") || lower.includes("as"))
@@ -383,12 +383,12 @@ export default function App() {
           newTitle: match[2].trim(),
         };
     }
-    
+
     if (lower.includes("ungroup") || lower.includes("remove group")) {
       const match = lower.match(/(?:ungroup|remove group)\s+["']?(.+?)["']?$/);
       if (match) return { type: "ungroup", title: match[1].trim() };
     }
-    
+
     if (
       (lower.includes("group all") || lower.includes("group everything")) &&
       lower.includes("as")
@@ -415,9 +415,9 @@ export default function App() {
   async function searchGmailTabs(emailContext) {
     try {
       console.log(`📧 Searching Gmail tabs for: "${emailContext}"`);
-      
+
       const tabs = await chrome.tabs.query({});
-      const gmailTabs = tabs.filter(tab => {
+      const gmailTabs = tabs.filter((tab) => {
         const url = tab.url || "";
         return url.includes("mail.google.com") && !url.includes("chrome://");
       });
@@ -428,18 +428,32 @@ export default function App() {
       console.log(`Found ${gmailTabs.length} Gmail tabs`);
 
       const candidates = await queryFuse(emailContext, 20);
-      const gmailCandidates = candidates.filter(c => 
-        c.url && c.url.includes("mail.google.com")
+      const gmailCandidates = candidates.filter(
+        (c) => c.url && c.url.includes("mail.google.com")
       );
 
       if (gmailCandidates.length > 0) {
-        console.log(`[App.jsx] Found ${gmailCandidates.length} Gmail candidates via Fuse`);
+        console.log(
+          `[App.jsx] Found ${gmailCandidates.length} Gmail candidates via Fuse`
+        );
         let selectedTab = gmailCandidates[0];
-        
-        if (sessionRef.current && aiStatus === "ready" && gmailCandidates.length > 1) {
+
+        if (
+          sessionRef.current &&
+          aiStatus === "ready" &&
+          gmailCandidates.length > 1
+        ) {
           try {
-            const ranking = await rankWithAI(emailContext, gmailCandidates, 5, sessionRef);
-            if (ranking.confidence === "high" || ranking.confidence === "medium") {
+            const ranking = await rankWithAI(
+              emailContext,
+              gmailCandidates,
+              5,
+              sessionRef
+            );
+            if (
+              ranking.confidence === "high" ||
+              ranking.confidence === "medium"
+            ) {
               selectedTab = gmailCandidates[ranking.chosenIndex];
             }
           } catch (err) {
@@ -449,29 +463,33 @@ export default function App() {
 
         await chrome.tabs.update(selectedTab.id, { active: true });
         await chrome.windows.update(selectedTab.windowId, { focused: true });
-        
-        return { 
-          found: true, 
-          title: selectedTab.title, 
+
+        return {
+          found: true,
+          title: selectedTab.title,
           url: selectedTab.url,
-          matchCount: gmailCandidates.length 
+          matchCount: gmailCandidates.length,
         };
       }
 
-      console.warn("[App.jsx] Fuse found no Gmail matches. Manually searching snippets...");
+      console.warn(
+        "[App.jsx] Fuse found no Gmail matches. Manually searching snippets..."
+      );
       const contextLower = emailContext.toLowerCase();
       const allCandidates = await queryFuse("", 1000);
 
       let manualMatch = null;
       for (const tab of gmailTabs) {
-        const indexedData = allCandidates.find(c => c.id === tab.id);
+        const indexedData = allCandidates.find((c) => c.id === tab.id);
         if (!indexedData) continue;
 
         const title = (indexedData.title || "").toLowerCase();
         const snippet = (indexedData.snippet || "").toLowerCase();
 
         if (title.includes(contextLower) || snippet.includes(contextLower)) {
-          console.log(`[App.jsx] Manual fallback found match in Tab ${tab.id} (snippet: ${snippet.length} chars)`);
+          console.log(
+            `[App.jsx] Manual fallback found match in Tab ${tab.id} (snippet: ${snippet.length} chars)`
+          );
           manualMatch = indexedData;
           break;
         }
@@ -480,16 +498,20 @@ export default function App() {
       if (manualMatch) {
         await chrome.tabs.update(manualMatch.id, { active: true });
         await chrome.windows.update(manualMatch.windowId, { focused: true });
-        return { 
-          found: true, 
-          title: manualMatch.title, 
+        return {
+          found: true,
+          title: manualMatch.title,
           url: manualMatch.url,
           matchCount: 1,
-          method: "snippet-fallback"
+          method: "snippet-fallback",
         };
       }
 
-      return { found: false, error: "No matching Gmail found", gmailCount: gmailTabs.length };
+      return {
+        found: false,
+        error: "No matching Gmail found",
+        gmailCount: gmailTabs.length,
+      };
     } catch (err) {
       console.error("Gmail search error:", err);
       return { found: false, error: err.message };
@@ -500,14 +522,16 @@ export default function App() {
     try {
       const tabs = await chrome.tabs.query({});
       const lowerQuery = query.toLowerCase();
-      
-      const exactMatch = tabs.find(tab => {
+
+      const exactMatch = tabs.find((tab) => {
         const url = tab.url || "";
         try {
           const hostname = new URL(url).hostname.replace(/^www\./, "");
-          return hostname === lowerQuery || 
-                 hostname === `${lowerQuery}.com` ||
-                 url.includes(lowerQuery);
+          return (
+            hostname === lowerQuery ||
+            hostname === `${lowerQuery}.com` ||
+            url.includes(lowerQuery)
+          );
         } catch {
           return false;
         }
@@ -516,11 +540,11 @@ export default function App() {
       if (exactMatch) {
         await chrome.tabs.update(exactMatch.id, { active: true });
         await chrome.windows.update(exactMatch.windowId, { focused: true });
-        return { 
-          found: true, 
-          title: exactMatch.title, 
+        return {
+          found: true,
+          title: exactMatch.title,
           url: exactMatch.url,
-          action: "switched"
+          action: "switched",
         };
       }
 
@@ -534,10 +558,10 @@ export default function App() {
   async function performWebSearchAndOpen(query) {
     try {
       addMessage(`🔍 Searching the web for "${query}"...`, "system");
-      
+
       const response = await chrome.runtime.sendMessage({
         action: "webSearch",
-        query: query
+        query: query,
       });
 
       if (response && response.success && response.url) {
@@ -548,17 +572,19 @@ export default function App() {
           url: response.url,
           title: response.title,
           source: response.source,
-          isFirstResult: response.isFirstResult
+          isFirstResult: response.isFirstResult,
         };
       } else {
-        const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+        const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(
+          query
+        )}`;
         await chrome.tabs.create({ url: searchUrl, active: true });
         return {
           success: true,
           action: "web-search",
           url: searchUrl,
           title: `Search: ${query}`,
-          isFirstResult: false
+          isFirstResult: false,
         };
       }
     } catch (err) {
@@ -567,10 +593,16 @@ export default function App() {
     }
   }
 
-  async function smartOpenSite(siteName, originalText = "", checkExisting = false) {
+  async function smartOpenSite(
+    siteName,
+    originalText = "",
+    checkExisting = false
+  ) {
     try {
-      console.log(`🚀 SmartOpen: "${siteName}" (checkExisting: ${checkExisting})`);
-      
+      console.log(
+        `🚀 SmartOpen: "${siteName}" (checkExisting: ${checkExisting})`
+      );
+
       if (checkExisting) {
         const existing = await checkExistingTab(siteName);
         if (existing.found) {
@@ -579,14 +611,14 @@ export default function App() {
             action: "switched",
             url: existing.url,
             title: existing.title,
-            message: "Switched to existing tab"
+            message: "Switched to existing tab",
           };
         }
       }
 
       const response = await chrome.runtime.sendMessage({
         action: "webSearch",
-        query: originalText || siteName
+        query: originalText || siteName,
       });
 
       if (response && response.success && response.url) {
@@ -597,10 +629,13 @@ export default function App() {
           url: response.url,
           title: response.title,
           source: response.source,
-          isFirstResult: response.isFirstResult
+          isFirstResult: response.isFirstResult,
         };
       } else {
-        return { success: false, error: response?.error || "Background script failed" };
+        return {
+          success: false,
+          error: response?.error || "Background script failed",
+        };
       }
     } catch (err) {
       console.error("smartOpenSite error:", err);
@@ -629,27 +664,34 @@ export default function App() {
     });
   }
 
-  async function rankWithAI(query, candidates = [], maxCandidates = 8, sessionRefLocal) {
+  async function rankWithAI(
+    query,
+    candidates = [],
+    maxCandidates = 8,
+    sessionRefLocal
+  ) {
     if (!sessionRefLocal?.current || candidates.length === 0) {
       return { chosenIndex: 0, reason: "no ai available", confidence: "none" };
     }
 
     const top = candidates.slice(0, maxCandidates);
-    
-    const candidateText = top.map((c, i) => {
-      const title = (c.title || "Untitled").slice(0, 100);
-      const url = c.url || "";
-      const snippet = (c.snippet || "").slice(0, 300);
-      let domain = "";
-      try {
-        domain = new URL(url).hostname.replace(/^www\./, "");
-      } catch {}
-      
-      return `${i + 1}. "${title}"
+
+    const candidateText = top
+      .map((c, i) => {
+        const title = (c.title || "Untitled").slice(0, 100);
+        const url = c.url || "";
+        const snippet = (c.snippet || "").slice(0, 300);
+        let domain = "";
+        try {
+          domain = new URL(url).hostname.replace(/^www\./, "");
+        } catch {}
+
+        return `${i + 1}. "${title}"
    URL: ${url}
    Domain: ${domain}
    Preview: ${snippet || "No content available"}`;
-    }).join("\n\n");
+      })
+      .join("\n\n");
 
     const promptText = `You are a precise tab-matching assistant. Match the user's query to the best tab.
 
@@ -679,22 +721,29 @@ Respond with ONLY this JSON (no markdown):
       const raw = await sessionRefLocal.current.prompt(promptText);
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
-        return { chosenIndex: 0, reason: "AI response parse error", confidence: "low" };
+        return {
+          chosenIndex: 0,
+          reason: "AI response parse error",
+          confidence: "low",
+        };
       }
-      
+
       const parsed = JSON.parse(jsonMatch[0]);
-      const idx = Math.max(0, Math.min((parsed.matchIndex || 1) - 1, top.length - 1));
-      
+      const idx = Math.max(
+        0,
+        Math.min((parsed.matchIndex || 1) - 1, top.length - 1)
+      );
+
       const validConfidences = ["high", "medium", "low"];
-      const confidence = validConfidences.includes(parsed.confidence) 
-        ? parsed.confidence 
+      const confidence = validConfidences.includes(parsed.confidence)
+        ? parsed.confidence
         : "medium";
-      
+
       return {
         chosenIndex: idx,
         confidence,
         reason: parsed.reason || "AI matched this tab",
-        signals: parsed.signals || []
+        signals: parsed.signals || [],
       };
     } catch (err) {
       console.error("AI ranking error:", err);
@@ -703,10 +752,7 @@ Respond with ONLY this JSON (no markdown):
   }
 
   async function searchAndOpen(query, options = {}) {
-    const { 
-      silent = false, 
-      context = null 
-    } = options;
+    const { silent = false, context = null } = options;
 
     let searchQuery = query;
     if (proofreaderRef.current) {
@@ -725,10 +771,10 @@ Respond with ONLY this JSON (no markdown):
 
     if (!candidates || candidates.length === 0) {
       if (!silent) console.log("🔍 No Fuse results, trying direct search...");
-      
+
       const q = searchQuery.toLowerCase();
       const all = await chrome.tabs.query({ currentWindow: true });
-      const matches = all.filter(t => {
+      const matches = all.filter((t) => {
         const title = (t.title || "").toLowerCase();
         const url = (t.url || "").toLowerCase();
         return title.includes(q) || url.includes(q);
@@ -749,23 +795,23 @@ Respond with ONLY this JSON (no markdown):
         try {
           await chrome.tabs.update(match.id, { active: true });
           await chrome.windows.update(match.windowId, { focused: true });
-          return { 
-            opened: true, 
-            method: "direct-search", 
-            title: match.title, 
+          return {
+            opened: true,
+            method: "direct-search",
+            title: match.title,
             url: match.url,
-            matchCount: matches.length
+            matchCount: matches.length,
           };
         } catch (err) {
           console.error("Tab activation error:", err);
         }
       }
-      
-      return { 
-        opened: false, 
-        error: "No tabs found", 
-        shouldTryWeb: true, 
-        query: searchQuery 
+
+      return {
+        opened: false,
+        error: "No tabs found",
+        shouldTryWeb: true,
+        query: searchQuery,
       };
     }
 
@@ -777,15 +823,21 @@ Respond with ONLY this JSON (no markdown):
 
     if (sessionRef.current && aiStatus === "ready" && candidates.length > 1) {
       try {
-        const ranking = await rankWithAI(searchQuery, candidates, 10, sessionRef);
-        
+        const ranking = await rankWithAI(
+          searchQuery,
+          candidates,
+          10,
+          sessionRef
+        );
+
         if (ranking.confidence === "low") {
-          if (!silent) console.log(`⚠️ AI confidence low, falling back to web.`);
-          return { 
-            opened: false, 
-            error: "No good match found", 
-            shouldTryWeb: true, 
-            query: searchQuery 
+          if (!silent)
+            console.log(`⚠️ AI confidence low, falling back to web.`);
+          return {
+            opened: false,
+            error: "No good match found",
+            shouldTryWeb: true,
+            query: searchQuery,
           };
         }
 
@@ -795,13 +847,16 @@ Respond with ONLY this JSON (no markdown):
           rankingInfo = {
             confidence: ranking.confidence,
             reason: ranking.reason,
-            signals: ranking.signals
+            signals: ranking.signals,
           };
           if (!silent) {
-            console.log(`🤖 AI selected (${ranking.confidence}): ${selectedTab.title}`);
+            console.log(
+              `🤖 AI selected (${ranking.confidence}): ${selectedTab.title}`
+            );
           }
         } else {
-          if (!silent) console.log(`⚠️ AI confidence unknown, using top Fuse result`);
+          if (!silent)
+            console.log(`⚠️ AI confidence unknown, using top Fuse result`);
         }
       } catch (err) {
         console.error("AI ranking failed:", err);
@@ -812,13 +867,13 @@ Respond with ONLY this JSON (no markdown):
       try {
         await chrome.tabs.update(selectedTab.id, { active: true });
         await chrome.windows.update(selectedTab.windowId, { focused: true });
-        return { 
-          opened: true, 
-          method, 
-          title: selectedTab.title, 
+        return {
+          opened: true,
+          method,
+          title: selectedTab.title,
           url: selectedTab.url,
           ...rankingInfo,
-          candidateCount: candidates.length
+          candidateCount: candidates.length,
         };
       } catch (err) {
         console.error("Tab activation error:", err);
@@ -826,7 +881,12 @@ Respond with ONLY this JSON (no markdown):
       }
     }
 
-    return { opened: false, error: "No valid tabs found", shouldTryWeb: true, query: searchQuery };
+    return {
+      opened: false,
+      error: "No valid tabs found",
+      shouldTryWeb: true,
+      query: searchQuery,
+    };
   }
 
   const askAIToGroupTabs = async (tabs, userRequest) => {
@@ -834,23 +894,27 @@ Respond with ONLY this JSON (no markdown):
 
     const allIndexedTabs = await queryFuse("", 1000);
     const indexedTabMap = new Map();
-    allIndexedTabs.forEach(t => indexedTabMap.set(t.id, t));
+    allIndexedTabs.forEach((t) => indexedTabMap.set(t.id, t));
 
-    const tabsList = tabs.map((tab) => {
-      const indexedData = indexedTabMap.get(tab.id);
-      const title = indexedData?.title || tab.title || "Untitled";
-      const snippet = indexedData?.snippet || "";
-      let domain = "unknown.com";
-      try {
-        domain = new URL(tab.url).hostname.replace(/^www\./, "");
-      } catch {}
+    const tabsList = tabs
+      .map((tab) => {
+        const indexedData = indexedTabMap.get(tab.id);
+        const title = indexedData?.title || tab.title || "Untitled";
+        const snippet = indexedData?.snippet || "";
+        let domain = "unknown.com";
+        try {
+          domain = new URL(tab.url).hostname.replace(/^www\./, "");
+        } catch {}
 
-      return `Tab ${tab.id}: "${title}"
+        return `Tab ${tab.id}: "${title}"
    Domain: ${domain}
    Content: ${snippet.slice(0, 300) || "No content snippet available"}`;
-    }).join("\n---\n");
+      })
+      .join("\n---\n");
 
-    const aiPrompt = `Analyze ${tabs.length} tabs and group them logically. Use the Title, Domain, and Content to find topics.
+    const aiPrompt = `Analyze ${
+      tabs.length
+    } tabs and group them logically. Use the Title, Domain, and Content to find topics.
       
 Tabs:
 ${tabsList}
@@ -902,7 +966,7 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
   const handleSend = async () => {
     let text = prompt.trim();
     if (!text || loading) return;
-    
+
     addMessage(text, "user");
     setPrompt("");
     setLoading(true);
@@ -931,32 +995,30 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
         if (searchResult.opened) {
           setLoading(false);
           let msg = `✅ Switched to: "${searchResult.title}"`;
-          
+
           if (searchResult.candidateCount > 1) {
             msg += `\n\n📊 Found ${searchResult.candidateCount} matches`;
           }
           if (searchResult.confidence) {
             const emoji = { high: "🎯", medium: "👍", low: "🤔" };
-            msg += `\n${emoji[searchResult.confidence] || '🤔'} Confidence: ${searchResult.confidence}`;
+            msg += `\n${emoji[searchResult.confidence] || "🤔"} Confidence: ${
+              searchResult.confidence
+            }`;
           }
           if (searchResult.reason) {
             msg += `\n💡 ${searchResult.reason}`;
           }
-          
+
           addMessage(msg, "bot");
           return;
-        } 
-        
+        }
+
         if (searchResult.shouldTryWeb) {
           addMessage(`ℹ️ No tabs found. Searching the web...`, "system");
-          
+
           const openQuery = searchResult.query || command.query;
-          const openResult = await smartOpenSite(
-            openQuery,
-            openQuery,
-            false
-          );
-          
+          const openResult = await smartOpenSite(openQuery, openQuery, false);
+
           setLoading(false);
           if (openResult.success) {
             let msg = `🌐 Opened: "${openResult.title || openResult.url}"`;
@@ -969,7 +1031,7 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
           }
           return;
         }
-        
+
         setLoading(false);
         addMessage(`❌ ${searchResult.error || "Could not find tab"}.`, "bot");
         return;
@@ -978,7 +1040,7 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
       if (command.type === "emailSearch") {
         const result = await searchGmailTabs(command.query);
         setLoading(false);
-        
+
         if (result.found) {
           let msg = `✅ Opened Gmail: "${result.title}"`;
           if (result.matchCount > 1) {
@@ -986,7 +1048,14 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
           }
           addMessage(msg, "bot");
         } else {
-          addMessage(`❌ ${result.error}. ${result.gmailCount ? `Found ${result.gmailCount} Gmail tabs but none matched "${command.query}"` : 'Try opening Gmail first.'}`, "bot");
+          addMessage(
+            `❌ ${result.error}. ${
+              result.gmailCount
+                ? `Found ${result.gmailCount} Gmail tabs but none matched "${command.query}"`
+                : "Try opening Gmail first."
+            }`,
+            "bot"
+          );
         }
         return;
       }
@@ -1053,7 +1122,10 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
       }
     } catch (err) {
       setLoading(false);
-      const errorMessage = err?.message || String(err) || "An unknown error occurred in handleSend";
+      const errorMessage =
+        err?.message ||
+        String(err) ||
+        "An unknown error occurred in handleSend";
       console.error("Error in handleSend:", err);
       addMessage(`❌ Error: ${errorMessage}`, "bot");
     }
@@ -1066,7 +1138,7 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
       const response = await chrome.runtime.sendMessage({
         action: "organizeNow",
       });
-      
+
       setLoading(false);
       if (response && response.success) {
         let message = "";
@@ -1079,20 +1151,22 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
         } else {
           message = response.message || "✅ Organization complete!";
         }
-        
+
         addMessage(message, "bot");
         setTimeout(async () => {
           await updateTabCount();
           await loadGroups();
           setShowGroupManager(true);
-        }, 1500); 
+        }, 1500);
       } else {
-        const errorMsg = response?.error || "Could not trigger background organization";
+        const errorMsg =
+          response?.error || "Could not trigger background organization";
         addMessage(`❌ ${errorMsg}`, "bot");
       }
     } catch (err) {
       setLoading(false);
-      const errorMsg = err?.message || String(err) || "A critical error occurred.";
+      const errorMsg =
+        err?.message || String(err) || "A critical error occurred.";
       addMessage(`❌ Error: ${errorMsg}`, "bot");
     }
   };
@@ -1108,16 +1182,18 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
 
   return (
     <div
-      className={`w-[500px] h-[600px] ${isDark
+      className={`w-[500px] h-[600px] ${
+        isDark
           ? "bg-gradient-to-br from-slate-900 via-gray-900 to-slate-900"
           : "bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50"
-        } font-sans flex flex-col transition-all duration-500`}
+      } font-sans flex flex-col transition-all duration-500`}
     >
       <div
-        className={`sticky top-0 h-40 px-6 py-4 ${isDark
+        className={`sticky top-0 h-40 px-6 py-4 ${
+          isDark
             ? "bg-gradient-to-tl from-gray-900/40 to-cyan-700/40 backdrop-blur-xl border-b border-white/10"
             : "bg-white/60 backdrop-blur-xl border-b border-indigo-200/50"
-          }`}
+        }`}
       >
         <div className="relative flex items-center justify-between mb-4">
           <div className="flex flex-col justify-between items-start ">
@@ -1129,8 +1205,9 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
                 <BotMessageSquare />
               </div>
               <h3
-                className={`text-lg font-bold tracking-tight ${isDark ? "text-white" : "text-slate-900"
-                  }`}
+                className={`text-lg font-bold tracking-tight ${
+                  isDark ? "text-white" : "text-slate-900"
+                }`}
               >
                 {title}
               </h3>
@@ -1145,15 +1222,17 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
               >
                 {aiStatus === "ready" ? (
                   <span
-                    className={`${isDark ? "text-emerald-400" : "text-emerald-600"
-                      } font-bold`}
+                    className={`${
+                      isDark ? "text-emerald-400" : "text-emerald-600"
+                    } font-bold`}
                   >
                     {active}
                   </span>
                 ) : (
                   <span
-                    className={`${isDark ? "text-slate-400" : "text-black"
-                      } font-bold`}
+                    className={`${
+                      isDark ? "text-slate-400" : "text-black"
+                    } font-bold`}
                   >
                     {aiStatus}
                   </span>
@@ -1161,10 +1240,11 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
               </div>
               <span
                 className={`text-xs font-bold px-4 py-1 rounded-xl not-first:  
-                    ${isDark
-                    ? "bg-transparent text-yellow-500"
-                    : "bg-gray-200 text-red-400"
-                  }
+                    ${
+                      isDark
+                        ? "bg-transparent text-yellow-500"
+                        : "bg-gray-200 text-red-400"
+                    }
                     backdrop-blur-xl
                     `}
               >
@@ -1188,8 +1268,9 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
             />
             <button
               onClick={() => setIsDark(!isDark)}
-              className={`p-2 rounded-xl transition-all hover:scale-110 cursor-pointer ${isDark ? "text-yellow-300" : "text-slate-700"
-                }`}
+              className={`p-2 rounded-xl transition-all hover:scale-110 cursor-pointer ${
+                isDark ? "text-yellow-300" : "text-slate-700"
+              }`}
               title="Toggle theme"
             >
               {isDark ? <Sun /> : <Moon />}
@@ -1251,17 +1332,19 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
 
       {showGroupManager ? (
         <div
-          className={`w-[500px] h-[600px] overflow-x-hidden ${isDark
+          className={`w-[500px] h-[600px] overflow-x-hidden ${
+            isDark
               ? "bg-gradient-to-br from-gray-900 via-cyan-900 to-black"
               : "bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50"
-            } font-sans flex flex-col transition-all duration-500`}
+          } font-sans flex flex-col transition-all duration-500`}
         >
           <div
             className={`relative flex justify-between items-center px-6 py-4 border-b border-slate-300/20 `}
           >
             <h3
-              className={`text-xl uppercase font-bold tracking-tight ${isDark ? "text-white" : "text-slate-900"
-                }`}
+              className={`text-xl uppercase font-bold tracking-tight ${
+                isDark ? "text-white" : "text-slate-900"
+              }`}
             >
               Tab Groups
             </h3>
@@ -1275,8 +1358,9 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
           </div>
 
           <div
-            className={`flex-1 overflow-y-auto px-6 py-5 ${isDark ? "" : "bg-white/30"
-              }`}
+            className={`flex-1 overflow-y-auto px-6 py-5 ${
+              isDark ? "" : "bg-white/30"
+            }`}
           >
             {groups.length === 0 ? (
               <div className="flex flex-col gap-2 items-center justify-center h-full">
@@ -1284,8 +1368,9 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
                   className={` ${isDark ? "text-white" : "text-black"}`}
                 />
                 <p
-                  className={`text-center text-lg font-bold mono ${isDark ? "text-slate-300" : "text-slate-600"
-                    }`}
+                  className={`text-center text-lg font-bold mono ${
+                    isDark ? "text-slate-300" : "text-slate-600"
+                  }`}
                 >
                   No groups yet. Create some!
                 </p>
@@ -1308,10 +1393,11 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
                               handleRenameSubmit(group.title);
                             if (e.key === "Escape") setRenamingGroup(null);
                           }}
-                          className={`flex-1 px-3 py-1.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 ${isDark
+                          className={`flex-1 px-3 py-1.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 ${
+                            isDark
                               ? "bg-slate-700 border border-slate-600 text-white "
                               : "bg-white border border-slate-300 text-slate-900"
-                            }`}
+                          }`}
                           autoFocus
                         />
                         <button
@@ -1322,10 +1408,11 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
                         </button>
                         <button
                           onClick={() => setRenamingGroup(null)}
-                          className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all cursor-pointer ${isDark
+                          className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
+                            isDark
                               ? "bg-slate-700 text-white hover:bg-slate-600"
                               : "bg-slate-200 text-slate-700 hover:bg-slate-300"
-                            }`}
+                          }`}
                         >
                           ✕
                         </button>
@@ -1333,43 +1420,47 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
                     ) : (
                       <>
                         <div
-                          className={`flex justify-between items-center p-4 rounded-2xl shadow-sm border transition-all ${isDark
+                          className={`flex justify-between items-center p-4 rounded-2xl shadow-sm border transition-all ${
+                            isDark
                               ? "bg-slate-800 border-slate-700 hover:border-slate-600"
                               : "bg-white border-slate-200 hover:border-slate-300"
-                            }`}
+                          }`}
                         >
                           <div className="flex items-start gap-3">
                             <div
-                              className={`w-3 h-3 mt-1 rounded-full ${group.color === "blue"
+                              className={`w-3 h-3 mt-1 rounded-full ${
+                                group.color === "blue"
                                   ? "bg-blue-500"
                                   : group.color === "red"
-                                    ? "bg-red-500"
-                                    : group.color === "yellow"
-                                      ? "bg-yellow-500"
-                                      : group.color === "green"
-                                        ? "bg-green-500"
-                                        : group.color === "pink"
-                                          ? "bg-pink-500"
-                                          : group.color === "purple"
-                                            ? "bg-purple-500"
-                                            : group.color === "cyan"
-                                              ? "bg-cyan-500"
-                                              : "bg-orange-500"
-                                }`}
+                                  ? "bg-red-500"
+                                  : group.color === "yellow"
+                                  ? "bg-yellow-500"
+                                  : group.color === "green"
+                                  ? "bg-green-500"
+                                  : group.color === "pink"
+                                  ? "bg-pink-500"
+                                  : group.color === "purple"
+                                  ? "bg-purple-500"
+                                  : group.color === "cyan"
+                                  ? "bg-cyan-500"
+                                  : "bg-orange-500"
+                              }`}
                             ></div>
 
                             <div className="flex flex-col">
                               <h4
-                                className={`font-semibold text-base leading-tight ${isDark ? "text-white" : "text-slate-900"
-                                  }`}
+                                className={`font-semibold text-base leading-tight ${
+                                  isDark ? "text-white" : "text-slate-900"
+                                }`}
                               >
                                 {group.title}
                               </h4>
                               <span
-                                className={`text-xs mt-1 px-2 py-0.5 rounded-md w-fit ${isDark
+                                className={`text-xs mt-1 px-2 py-0.5 rounded-md w-fit ${
+                                  isDark
                                     ? "bg-slate-700 text-slate-300"
                                     : "bg-slate-100 text-slate-600"
-                                  }`}
+                                }`}
                               >
                                 {group.tabCount}{" "}
                                 {group.tabCount === 1 ? "tab" : "tabs"}
@@ -1380,22 +1471,24 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
                           <div className="flex gap-2">
                             <button
                               onClick={() => handleRenameStart(group)}
-                              className={`p-2 rounded-lg transition-all hover:scale-110 cursor-pointer ${isDark
+                              className={`p-2 rounded-lg transition-all hover:scale-110 cursor-pointer ${
+                                isDark
                                   ? "bg-green-600/80 hover:bg-green-600 text-white"
                                   : "bg-green-500 hover:bg-green-600 text-white"
-                                }`}
+                              }`}
                             >
                               <Pencil size={16} />
                             </button>
 
                             <button
                               onClick={() => handleUngroup(group.title)}
-                              className={`p-2 rounded-lg transition-all hover:scale-110 cursor-pointer ${isDark
+                              className={`p-2 rounded-lg transition-all hover:scale-110 cursor-pointer ${
+                                isDark
                                   ? "bg-orange-600/80 hover:bg-orange-600 text-white"
                                   : "bg-orange-500 hover:bg-orange-600 text-white"
-                                }`}
+                              }`}
                             >
-                              <Ungroup  size={16} />
+                              <Ungroup size={16} />
                             </button>
                           </div>
                         </div>
@@ -1410,10 +1503,11 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
       ) : (
         <>
           <div
-            className={`flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-3 ${isDark
+            className={`flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-3 ${
+              isDark
                 ? "bg-gradient-to-br from-gray-900 via-cyan-900 to-black"
                 : "bg-white/30"
-              }`}
+            }`}
           >
             {messages.map((msg, i) => {
               const isUser = msg.sender === "user";
@@ -1427,9 +1521,10 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
                   >
                     <div
                       className={`max-w-[15rem] px-4 py-2.5 rounded-2xl rounded-tr-md shadow-lg text-sm leading-relaxed font-semibold
-                        ${isDark
-                          ? "bg-gradient-to-bl from-green-600 to-cyan-800 text-white border border-purple-500/30"
-                          : "bg-gradient-to-bl from-white to-cyan-100 text-slate-900 border border-indigo-200"
+                        ${
+                          isDark
+                            ? "bg-gradient-to-bl from-green-600 to-cyan-800 text-white border border-purple-500/30"
+                            : "bg-gradient-to-bl from-white to-cyan-100 text-slate-900 border border-indigo-200"
                         }
                         `}
                       style={{ wordWrap: "break-word" }}
@@ -1449,10 +1544,11 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
                 return (
                   <div key={i} className="flex justify-center animate-fade-in">
                     <div
-                      className={`px-4 py-2 rounded-full text-xs font-medium ${isDark
+                      className={`px-4 py-2 rounded-full text-xs font-medium ${
+                        isDark
                           ? "bg-indigo-500/20 text-indigo-200 border border-indigo-500/30"
                           : "bg-indigo-100 text-indigo-700 border border-indigo-200"
-                        }`}
+                      }`}
                     >
                       {msg.text}
                     </div>
@@ -1465,10 +1561,11 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
                   className="flex justify-start animate-slide-in-left"
                 >
                   <div
-                    className={`max-w-[90%] px-4 py-2 rounded-2xl rounded-tl-md shadow-md text-sm ${isDark
+                    className={`max-w-[90%] px-4 py-2 rounded-2xl rounded-tl-md shadow-md text-sm ${
+                      isDark
                         ? "bg-slate-800/80 text-slate-100 border border-slate-700/50"
                         : "bg-white text-slate-800 border border-slate-200"
-                      }`}
+                    }`}
                     style={{
                       wordWrap: "break-word",
                       whiteSpace: "preserve-breaks",
@@ -1489,10 +1586,11 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
             {loading && (
               <div className="flex justify-start animate-pulse">
                 <div
-                  className={`px-4 py-2.5 rounded-2xl rounded-tl-md flex items-center gap-2 text-sm ${isDark
+                  className={`px-4 py-2.5 rounded-2xl rounded-tl-md flex items-center gap-2 text-sm ${
+                    isDark
                       ? "bg-slate-800/80 text-slate-300 border border-slate-700/50"
                       : "bg-white text-slate-600 border border-slate-200"
-                    }`}
+                  }`}
                 >
                   <div className="flex gap-1">
                     <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce"></div>
@@ -1514,10 +1612,11 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
           </div>
 
           <div
-            className={`px-6 py-4 ${isDark
+            className={`px-6 py-4 ${
+              isDark
                 ? "bg-gradient-to-tl from-gray-900/40 to-cyan-700/40 backdrop-blur-xl border-b border-white/10"
                 : "bg-white/60 backdrop-blur-xl border-t border-indigo-200/50"
-              }`}
+            }`}
           >
             <div className="flex gap-2">
               <input
@@ -1527,18 +1626,20 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
                 onKeyDown={(e) => e.key === "Enter" && !loading && handleSend()}
                 placeholder="Search tabs, open sites, or organize..."
                 disabled={loading}
-                className={`flex-1 px-4 py-3 rounded-xl text-sm transition-all outline-none focus:ring-2 focus:ring-cyan-500 ${isDark
+                className={`flex-1 px-4 py-3 rounded-xl text-sm transition-all outline-none focus:ring-2 focus:ring-cyan-500 ${
+                  isDark
                     ? "bg-slate-800/50 border border-slate-700 text-white placeholder-slate-400 "
                     : "bg-white border border-slate-300 text-slate-900 placeholder-slate-400 "
-                  } ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
+                } ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
               />
               <button
                 onClick={handleSend}
                 disabled={loading || !prompt.trim()}
-                className={`px-5 py-3 rounded-xl font-semibold transition-all  ${loading || !prompt.trim()
+                className={`px-5 py-3 rounded-xl font-semibold transition-all  ${
+                  loading || !prompt.trim()
                     ? "bg-slate-400/30 text-slate-500 cursor-not-allowed"
                     : "bg-gradient-to-r from-green-500 to-green-600 cursor-pointer text-white hover:shadow-lg hover:scale-105"
-                  }`}
+                }`}
                 title="Send message"
               >
                 <span className="text-lg">
@@ -1598,11 +1699,15 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
           background: transparent;
         }
         .overflow-y-auto::-webkit-scrollbar-thumb {
-          background: ${isDark ? "rgba(139, 92, 246, 0.3)" : "rgba(99, 102, 241, 0.3)"};
+          background: ${
+            isDark ? "rgba(139, 92, 246, 0.3)" : "rgba(99, 102, 241, 0.3)"
+          };
           border-radius: 10px;
         }
         .overflow-y-auto::-webkit-scrollbar-thumb:hover {
-          background: ${isDark ? "rgba(139, 92, 246, 0.5)" : "rgba(99, 102, 241, 0.5)"};
+          background: ${
+            isDark ? "rgba(139, 92, 246, 0.5)" : "rgba(99, 102, 241, 0.5)"
+          };
         }
       `}</style>
     </div>

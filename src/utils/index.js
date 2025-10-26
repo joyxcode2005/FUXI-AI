@@ -98,103 +98,73 @@ Provide a concise summary mentioning:
 Strictly adhere to the JSON-only output format. Prioritize dynamic, task-oriented groups when identifiable, but fall back to sensible generalized categories to avoid excessive fragmentation.
 `;
 
-export const helpMessage = `## 🎯 AI Tab Manager - Your Smart Assistant
+// Replace the existing helpMessage in src/utils/index.js
 
-### 🔍 **Smart Search & Open Logic**
+export const helpMessage = `## 🚀 AI Tab Manager Help
 
-I'm smart about what you want - I check if tabs already exist before opening new ones!
+I can find open tabs, open new sites intelligently, and organize your workspace.
 
 ---
 
-### 1. 📧 **Gmail Search (NEW!)**
+### 1. 🔍 Smart Search & Open (Primary Command)
 
-Search through multiple Gmail accounts with context:
+This is the main "do-it-all" command. It always **searches your open tabs first** (including their content) and switches to the best match. If no open tab is found, it intelligently searches the web.
+
+You can trigger it just by typing your query, or by using a command word:
+
+**Examples (all do the same thing):**
+- **"open react dashboard"**
+- **"find react dashboard"**
+- **"search react dashboard"**
+- **"react dashboard"**
+
+---
+
+### 2. 💻 Developer Tools (Smart Opener)
+
+The Smart Search is even smarter for developers. It uses APIs to find the *exact* repo or answer.
+
+**GitHub Examples:**
+- **"open github react"** → Opens the \`facebook/react\` repo
+- **"open github nextjs"** → Opens the \`vercel/next.js\` repo
+
+**Stack Overflow Examples:**
+- **"open so react query error"** → Finds the top-rated answer
+- **"so how to center a div"**
+
+---
+
+### 3. 📧 Gmail Context Search
+
+Search the content of your open Gmail tabs. *This is separate from the main search.*
 
 **Examples:**
-- **"open mail from google"** → Finds Gmail with Google-related content
-- **"find email about meeting"** → Searches Gmail tabs for meeting emails
-- **"show mail from john"** → Finds Gmail with messages from John
+- **"find mail from google"**
+- **"open email about meeting"**
+- **"show mail from john"**
 
 ---
 
-### 2. 🔍 **Search Commands** (Finds Existing Tabs First)
+### 4. 🎬 Quick Media & Site Shortcuts
 
-Use **"search"**, **"find"**, **"switch to"** to find open tabs:
+These commands go directly to specific places.
 
-**Examples:**
-- **"search react dashboard"** → Finds your open React app tab
-- **"find github repo"** → Switches to your open GitHub tab
-- **"where is my email"** → Finds your Gmail tab
-
-If no tab is found, I'll search the web automatically!
+- **"listen to music"** / **"play music"** → Opens Spotify
+- **"watch reels"** → Opens Instagram Reels
+- **"watch shorts"** → Opens YouTube Shorts
+- **"check email"** → Opens Gmail
 
 ---
 
-### 3. 🚀 **Open Commands** (Intelligent Opening)
+### 5. 🗂️ Tab & Group Organization
 
-Use **"open"**, **"go to"**, **"visit"** - I check if it's already open first!
-
-#### 🎯 **Specific Intents (Always Work!):**
-- **"i want to listen to music"** → Opens Spotify (music = Spotify only!)
-- **"i want to watch reels"** → Opens Instagram Reels section
-- **"i want to watch shorts"** → Opens YouTube Shorts section
-- **"i want to read news"** → Opens Google News
-
-#### 💻 **Developer Tools:**
-- **"open github react"** → Opens facebook/react repo directly
-- **"open github redis"** → Opens redis/redis repo
-- **"open so react query error"** → Opens top Stack Overflow answer
-
-#### 🌐 **General Sites:**
-- **"open spotify"** → Switches to Spotify if open, otherwise opens it
-- **"open youtube"** → Smart detection of existing tab
-- **"open netflix"** → Checks first, then opens
-
----
-
-### 4. 🎯 **Natural Language** (Just Say What You Want!)
-
-I understand natural requests:
-
-**Examples:**
-- **"watch reels"** → Instagram Reels
-- **"play music"** → Spotify
-- **"listen to music"** → Spotify (always!)
-- **"watch videos"** → YouTube
-- **"check email"** → Gmail
-- **"buy something"** → Amazon
-
----
-
-### 5. 📋 **Organization & Management**
-
-- **"organize my tabs"**: AI groups ungrouped tabs
-- **"group all as [name]"**: Groups all ungrouped tabs under one name
-- **"groups" / "list groups"**: Shows the group manager
-- **"rename [old] to [new]"**: Renames a group
-- **"ungroup [name]"**: Removes tabs from a group
-
----
-
-## 💡 **Key Features:**
-
-✅ **Checks existing tabs first** - Won't open duplicates unless you want to
-✅ **Music = Spotify only** - No confusion with other music sites
-✅ **Exact GitHub repos** - Finds the right repository every time
-✅ **Gmail context search** - Search through multiple Gmail accounts
-✅ **Instagram Reels/YouTube Shorts** - Opens exact sections you want
-✅ **Smart web fallback** - Searches web if no tab found
-
----
-
-## 🎨 **Tips:**
-
-- Use **"open"** when you want to ensure something loads (checks existing first)
-- Use **"search"** when looking for tabs you know are already open
-- For Gmail, be specific: **"mail from [person/topic]"**
-- GitHub queries work best with repo names: **"open github nextjs"**
-
-Type anything and I'll figure out what you mean! 🚀`;
+- **"organize my tabs"** / **"organize"**: Lets the AI analyze and group all ungrouped tabs.
+- **"group all as [name]"**: Groups all ungrouped tabs into a single new group.
+- **"list groups"** / **"groups"**: Shows the group manager UI.
+- **"rename [old] to [new]"**: Renames an existing group.
+- **"ungroup [name]"**: Ungroups all tabs from a group.
+- **"help"**: Shows this help message.
+`;
 
 export const aiReadyMessage = `🤖 AI is ready! Type 'help' for commands.`;
 export const aiUnavailableMessage = `ℹ️ AI unavailable. Manual commands still work!`;

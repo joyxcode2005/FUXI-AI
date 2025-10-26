@@ -1,5 +1,5 @@
-// src/popup/App.jsx - FINAL DYNAMIC VERSION
-import { useState, useRef, useEffect } from "react";
+// src/popup/App.jsx - OPTIMIZED VERSION
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
   aiReadyMessage,
   aiUnavailableMessage,
@@ -27,50 +27,41 @@ import LanguageDropdown from "../components/DropdownButton";
 import { memo } from "react";
 import { Ungroup } from "lucide-react";
 
-// NEW, MEMOIZED COMPONENT - Place this OUTSIDE (above) your App component
 const TranslatedText = memo(function TranslatedText({
   msg,
   language,
   translatorSession,
 }) {
-  // Default the state to the original English text
   const [translated, setTranslated] = useState(msg?.text || "...");
 
   useEffect(() => {
-    // 1. Skip if no message, or if translator session isn't ready
     if (!msg?.text || !translatorSession) {
-      setTranslated(msg.text); // Ensure it shows original text
+      setTranslated(msg.text);
       return;
     }
 
-    // 2. If target language is English, just use the original text
     if (language.code === "en") {
       setTranslated(msg.text);
       return;
     }
 
-    let isCancelled = false; // Prevent race conditions
+    let isCancelled = false;
 
     (async () => {
       try {
-        // 3. Use the passed 'translatorSession' prop
         const result = await translatorSession.translate(msg.text);
         if (!isCancelled) setTranslated(result);
       } catch (err) {
         console.error("Translation error:", err);
-        // 4. Fallback to original text if translation fails
         if (!isCancelled) setTranslated(msg.text);
       }
     })();
 
-    // Cleanup if component unmounts
     return () => {
       isCancelled = true;
     };
-    // 5. KEY: Depend on the session object, not a ref
   }, [msg?.text, language, translatorSession]);
 
-  // Render the state, which is guaranteed to be either translated or the original
   return <div>{translated}</div>;
 });
 
@@ -83,7 +74,6 @@ export default function App() {
   const [organise, setOrganise] = useState("Organise Now");
   const [clear, setClear] = useState("Clear Chat");
 
-  // UI / feature state
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState([]);
   const [prompt, setPrompt] = useState("");
@@ -95,22 +85,19 @@ export default function App() {
   const [renamingGroup, setRenamingGroup] = useState(null);
   const [newGroupName, setNewGroupName] = useState("");
   const [language, setLanguage] = useState({ name: "English", code: "en" });
-  const [enabled, setEnabled] = useState(true); // auto-grouping
+  const [enabled, setEnabled] = useState(true);
 
-  // refs
   const sessionRef = useRef(null);
   const chatEndRef = useRef(null);
   const proofreaderRef = useRef(null);
   const [languageSession, setLanguageSession] = useState(null);
 
-  // Load auto-grouping pref on mount
   useEffect(() => {
     chrome.storage.local.get("autoGroupingEnabled", (data) => {
       setEnabled(data.autoGroupingEnabled ?? true);
     });
   }, []);
 
-  // Load persisted messages, init AIs, counts, theme
   useEffect(() => {
     chrome.storage.local.get("chatMessages", (data) => {
       if (data.chatMessages && Array.isArray(data.chatMessages)) {
@@ -130,9 +117,6 @@ export default function App() {
     initializeProofreaderAI();
     updateTabCount();
 
-    // Load theme from chrome.storage.local
-
-    // Load theme
     chrome.storage.local.get("tabManagerTheme", (data) => {
       if (data.tabManagerTheme) {
         setIsDark(data.tabManagerTheme === "dark");
@@ -157,18 +141,14 @@ export default function App() {
     if (prompt === "help") handleSend();
   }, [prompt]);
 
-  // Handle language change
   const onChangeLanguage = async (lang) => {
-    // capture the previous language code BEFORE updating state
     const prevLangCode = language?.code ?? "en";
 
-    setLanguage(lang); // Update the language state
+    setLanguage(lang);
 
-    // --- NEW LOGIC: Handle switching TO English ---
     if (lang.code === "en") {
-      setLanguageSession(null); // Clear the translator session
+      setLanguageSession(null);
 
-      // Manually reset all UI text to English
       setTitle("AI TAB MANAGER");
       setActive("Auto-Active");
       setTabsText("Tabs Open");
@@ -176,12 +156,9 @@ export default function App() {
       setHelp("Help");
       setOrganise("Organise Now");
       setClear("Clear Chat");
-      return; // Stop here. We don't need to create a translator.
+      return;
     }
-    // --- END NEW LOGIC ---
 
-    // If not switching to English, create a new translator using the current source language
-    // (use prevLangCode so source language follows what was active before the change)
     const newLanguageSession = await initializeLanguageChangeAI(
       lang,
       prevLangCode
@@ -224,7 +201,6 @@ export default function App() {
     }
   };
 
-  // Toggle auto-grouping feature
   const toggleFeature = () => {
     const newValue = !enabled;
     setEnabled(newValue);
@@ -250,7 +226,7 @@ export default function App() {
         const availability = await LanguageModel.availability();
         if (availability === "available") {
           sessionRef.current = await LanguageModel.create({
-            systemPrompt: systemPrompt,
+            initialPrompts:[{role:"system",content:systemPrompt}]
           });
           setAiStatus("ready");
         } else {
@@ -278,7 +254,6 @@ export default function App() {
     }
   };
 
-  // Initialize language change AI — now accepts sourceLanguage
   const initializeLanguageChangeAI = async (
     targetLanguage,
     sourceLanguage = "en"
@@ -296,19 +271,18 @@ export default function App() {
           targetLanguage.code,
           ")"
         );
-        setLanguageSession(session); // <-- Set state to trigger re-render for chat
-        return session; // <-- Return session for immediate use
+        setLanguageSession(session);
+        return session;
       }
       return null;
     } catch (error) {
       console.error("❌ Language Change AI initialization failed:", error);
-      setLanguageSession(null); // Set to null on error
+      setLanguageSession(null);
       return null;
     }
   };
 
-  // Update tab count excluding special tabs
-  const updateTabCount = async () => {
+  const updateTabCount = useCallback(async () => {
     try {
       const tabs = await chrome.tabs.query({ currentWindow: true });
       const validTabs = tabs.filter((tab) => {
@@ -324,20 +298,20 @@ export default function App() {
     } catch (err) {
       console.error("Failed to count tabs:", err);
     }
-  };
+  }, []);
 
-  const loadGroups = async () => {
+  const loadGroups = useCallback(async () => {
     const groupsList = await getAllGroups();
     setGroups(groupsList);
-  };
+  }, []);
 
-  const addMessage = (text, sender) => {
+  const addMessage = useCallback((text, sender) => {
     setMessages((prev) => {
       const newMessages = [...prev, { text, sender, timestamp: Date.now() }];
       chrome.storage.local.set({ chatMessages: newMessages });
       return newMessages;
     });
-  };
+  }, []);
 
   const getAllTabs = async (includeGrouped = false) => {
     const tabs = await chrome.tabs.query({ currentWindow: true });
@@ -366,12 +340,10 @@ export default function App() {
       }));
   };
 
-  // ✨ ENHANCED: Replaced complex regex with a simpler dynamic system
   const detectCommand = (text) => {
     const lower = text.toLowerCase().trim();
     if (lower === "help" || lower === "commands") return { type: "help" };
 
-    // Priority 1: Gmail-specific patterns (Unchanged)
     const gmailPatterns = [
       /^(open|show|find|search)\s+(mail|email|gmail)\s+(?:from|about|with|by|regarding|to)?\s*(.+)/i,
       /^(mail|email|gmail)\s+(?:from|about|with|by|regarding|to)?\s*(.+)/i,
@@ -381,7 +353,7 @@ export default function App() {
     for (const pattern of gmailPatterns) {
       const match = text.match(pattern);
       if (match) {
-        const emailContext = match[match.length - 1]; // Last capture group
+        const emailContext = match[match.length - 1];
         return { 
           type: "emailSearch",
           query: emailContext.trim(),
@@ -390,7 +362,6 @@ export default function App() {
       }
     }
 
-    // Priority 2: Group management commands (Unchanged)
     if (
       lower.includes("list group") ||
       lower.includes("show group") ||
@@ -428,7 +399,6 @@ export default function App() {
       if (match) return { type: "groupAll", title: match[1].trim() };
     }
 
-    // Priority 3: Organize command (Unchanged)
     if (
       lower.includes("group") ||
       lower.includes("organize") ||
@@ -439,12 +409,9 @@ export default function App() {
       return { type: "organize" };
     }
 
-    // Priority 4: NEW DYNAMIC COMMAND
-    // If it's none of the above, treat it as a dynamic query.
     return { type: "dynamicSearchOrOpen", query: text };
   };
 
-  // 🆕 NEW: Gmail-specific search function
   async function searchGmailTabs(emailContext) {
     try {
       console.log(`📧 Searching Gmail tabs for: "${emailContext}"`);
@@ -460,7 +427,6 @@ export default function App() {
       }
       console.log(`Found ${gmailTabs.length} Gmail tabs`);
 
-      // Use Fuse to search through all tabs
       const candidates = await queryFuse(emailContext, 20);
       const gmailCandidates = candidates.filter(c => 
         c.url && c.url.includes("mail.google.com")
@@ -481,7 +447,6 @@ export default function App() {
           }
         }
 
-        // Activate the selected Gmail tab
         await chrome.tabs.update(selectedTab.id, { active: true });
         await chrome.windows.update(selectedTab.windowId, { focused: true });
         
@@ -493,15 +458,12 @@ export default function App() {
         };
       }
 
-      // *** NEW FALLBACK LOGIC ***
-      // If Fuse returned 0 results, manually check the snippets of all Gmail tabs
       console.warn("[App.jsx] Fuse found no Gmail matches. Manually searching snippets...");
       const contextLower = emailContext.toLowerCase();
-      const allCandidates = await queryFuse("", 1000); // Get ALL indexed tabs
+      const allCandidates = await queryFuse("", 1000);
 
       let manualMatch = null;
       for (const tab of gmailTabs) {
-        // Find the full indexed data for this Gmail tab
         const indexedData = allCandidates.find(c => c.id === tab.id);
         if (!indexedData) continue;
 
@@ -511,7 +473,7 @@ export default function App() {
         if (title.includes(contextLower) || snippet.includes(contextLower)) {
           console.log(`[App.jsx] Manual fallback found match in Tab ${tab.id} (snippet: ${snippet.length} chars)`);
           manualMatch = indexedData;
-          break; // Found the first match
+          break;
         }
       }
 
@@ -526,8 +488,6 @@ export default function App() {
           method: "snippet-fallback"
         };
       }
-      // *** END NEW FALLBACK ***
-
 
       return { found: false, error: "No matching Gmail found", gmailCount: gmailTabs.length };
     } catch (err) {
@@ -536,13 +496,11 @@ export default function App() {
     }
   }
 
-  // ✨ ENHANCED: Check if tab already exists before opening
   async function checkExistingTab(query) {
     try {
       const tabs = await chrome.tabs.query({});
       const lowerQuery = query.toLowerCase();
       
-      // Exact domain match
       const exactMatch = tabs.find(tab => {
         const url = tab.url || "";
         try {
@@ -573,7 +531,6 @@ export default function App() {
     }
   }
 
-  // ✨ ENHANCED: Web search with existing tab check
   async function performWebSearchAndOpen(query) {
     try {
       addMessage(`🔍 Searching the web for "${query}"...`, "system");
@@ -610,12 +567,10 @@ export default function App() {
     }
   }
 
-  // ✨ ENHANCED: Smart open with existing tab check
   async function smartOpenSite(siteName, originalText = "", checkExisting = false) {
     try {
       console.log(`🚀 SmartOpen: "${siteName}" (checkExisting: ${checkExisting})`);
       
-      // Check if tab already exists first
       if (checkExisting) {
         const existing = await checkExistingTab(siteName);
         if (existing.found) {
@@ -629,7 +584,6 @@ export default function App() {
         }
       }
 
-      // Send to background script for web search/opening
       const response = await chrome.runtime.sendMessage({
         action: "webSearch",
         query: originalText || siteName
@@ -654,7 +608,6 @@ export default function App() {
     }
   }
 
-  // Query Fuse search index
   async function queryFuse(query, limit = 10) {
     if (!query || query.trim() === "") return [];
     return new Promise((resolve) => {
@@ -676,7 +629,6 @@ export default function App() {
     });
   }
 
-  // ✨ ENHANCED: Better AI ranking with confidence thresholds
   async function rankWithAI(query, candidates = [], maxCandidates = 8, sessionRefLocal) {
     if (!sessionRefLocal?.current || candidates.length === 0) {
       return { chosenIndex: 0, reason: "no ai available", confidence: "none" };
@@ -750,14 +702,12 @@ Respond with ONLY this JSON (no markdown):
     }
   }
 
-  // ✨ ENHANCED: Search function now returns "shouldTryWeb" on low confidence
   async function searchAndOpen(query, options = {}) {
     const { 
       silent = false, 
       context = null 
     } = options;
 
-    // Spell check
     let searchQuery = query;
     if (proofreaderRef.current) {
       try {
@@ -771,13 +721,11 @@ Respond with ONLY this JSON (no markdown):
       }
     }
 
-    // Search Fuse
     const candidates = await queryFuse(searchQuery, 15);
 
     if (!candidates || candidates.length === 0) {
       if (!silent) console.log("🔍 No Fuse results, trying direct search...");
       
-      // Direct tab search fallback
       const q = searchQuery.toLowerCase();
       const all = await chrome.tabs.query({ currentWindow: true });
       const matches = all.filter(t => {
@@ -813,7 +761,6 @@ Respond with ONLY this JSON (no markdown):
         }
       }
       
-      // *** MODIFIED: Tell handleSend to try a web search ***
       return { 
         opened: false, 
         error: "No tabs found", 
@@ -832,7 +779,6 @@ Respond with ONLY this JSON (no markdown):
       try {
         const ranking = await rankWithAI(searchQuery, candidates, 10, sessionRef);
         
-        // *** NEW LOGIC: Check for LOW confidence ***
         if (ranking.confidence === "low") {
           if (!silent) console.log(`⚠️ AI confidence low, falling back to web.`);
           return { 
@@ -842,9 +788,7 @@ Respond with ONLY this JSON (no markdown):
             query: searchQuery 
           };
         }
-        // *** END NEW LOGIC ***
 
-        // High or medium confidence, proceed as normal
         if (ranking.confidence === "high" || ranking.confidence === "medium") {
           selectedTab = candidates[ranking.chosenIndex];
           method = "ai";
@@ -882,21 +826,16 @@ Respond with ONLY this JSON (no markdown):
       }
     }
 
-    // Fallback if something went wrong
     return { opened: false, error: "No valid tabs found", shouldTryWeb: true, query: searchQuery };
   }
 
-
-  // ✨ ENHANCED: AI grouping now uses indexed snippets
   const askAIToGroupTabs = async (tabs, userRequest) => {
     if (!sessionRef.current) throw new Error("AI session not available");
 
-    // 1. Get ALL indexed tabs to find their snippets
-    const allIndexedTabs = await queryFuse("", 1000); // Get all indexed data
+    const allIndexedTabs = await queryFuse("", 1000);
     const indexedTabMap = new Map();
     allIndexedTabs.forEach(t => indexedTabMap.set(t.id, t));
 
-    // 2. Build a rich list of tabs with snippets
     const tabsList = tabs.map((tab) => {
       const indexedData = indexedTabMap.get(tab.id);
       const title = indexedData?.title || tab.title || "Untitled";
@@ -906,14 +845,12 @@ Respond with ONLY this JSON (no markdown):
         domain = new URL(tab.url).hostname.replace(/^www\./, "");
       } catch {}
 
-      // Provide more context to the AI
       return `Tab ${tab.id}: "${title}"
    Domain: ${domain}
-   Content: ${snippet.slice(0, 300) || "No content snippet available"}`; // Send first 300 chars of snippet
-    }).join("\n---\n"); // Use a clear separator
+   Content: ${snippet.slice(0, 300) || "No content snippet available"}`;
+    }).join("\n---\n");
 
-    const aiPrompt = `Analyze ${tabs.length
-      } tabs and group them logically. Use the Title, Domain, and Content to find topics.
+    const aiPrompt = `Analyze ${tabs.length} tabs and group them logically. Use the Title, Domain, and Content to find topics.
       
 Tabs:
 ${tabsList}
@@ -962,7 +899,6 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
     setNewGroupName("");
   };
 
-  // ✨ ENHANCED: Better user feedback in handleSend
   const handleSend = async () => {
     let text = prompt.trim();
     if (!text || loading) return;
@@ -972,7 +908,6 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
     setLoading(true);
 
     try {
-      // Spell check
       if (proofreaderRef.current) {
         try {
           const result = await proofreaderRef.current.proofread(text);
@@ -990,13 +925,10 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
         return;
       }
 
-      // ✨ NEW: DYNAMIC SEARCH-OR-OPEN LOGIC
       if (command.type === "dynamicSearchOrOpen") {
-        // 1. First, try to SEARCH existing tabs
         const searchResult = await searchAndOpen(command.query);
 
         if (searchResult.opened) {
-          // 2. SUCCESS: We found and switched to an existing tab
           setLoading(false);
           let msg = `✅ Switched to: "${searchResult.title}"`;
           
@@ -1016,14 +948,13 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
         } 
         
         if (searchResult.shouldTryWeb) {
-          // 3. NO MATCH: No tab found, so now we OPEN a new one
           addMessage(`ℹ️ No tabs found. Searching the web...`, "system");
           
           const openQuery = searchResult.query || command.query;
           const openResult = await smartOpenSite(
             openQuery,
             openQuery,
-            false // 'checkExisting' is false, we already did it.
+            false
           );
           
           setLoading(false);
@@ -1039,13 +970,11 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
           return;
         }
         
-        // 4. Fallback Error
         setLoading(false);
         addMessage(`❌ ${searchResult.error || "Could not find tab"}.`, "bot");
         return;
       }
 
-      // 🆕 RE-ADD: emailSearch (moved after dynamic search)
       if (command.type === "emailSearch") {
         const result = await searchGmailTabs(command.query);
         setLoading(false);
@@ -1110,57 +1039,10 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
       }
 
       if (command.type === "organize") {
-        // *** FIX: Call the same robust function as the "Organize Now" button ***
         await quickOrganize();
-        const tabs = await getAllTabs(false);
-        if (tabs.length === 0) {
-          setLoading(false);
-          addMessage("⚠️ No groupable tabs. Open some webpages first!", "bot");
-          return;
-        }
-        if (!sessionRef.current || aiStatus !== "ready") {
-          setLoading(false);
-          addMessage(`⚠️ AI not available. Try: "group all as [name]"`, "bot");
-          return;
-        }
-        addMessage("🤖 AI analyzing tabs...", "system");
-        const aiResult = await askAIToGroupTabs(tabs, text);
-        if (!aiResult.valid) {
-          setLoading(false);
-          addMessage(`❌ AI error: ${aiResult.error}`, "bot");
-          return;
-        }
-        addMessage(`💡 ${aiResult.explanation}`, "bot");
-        const result = await createMultipleGroups(aiResult.groups);
-        setLoading(false);
-        if (result.success) {
-          let message = "";
-          if (result.groupsCreated > 0 && result.tabsAddedToExisting > 0) {
-            message = `✅ Created ${
-              result.groupsCreated
-            } new group(s) and added ${
-              result.tabsAddedToExisting
-            } tab(s) to existing groups!\n\n${result.groups
-              .map((n) => `• ${n}`)
-              .join("\n")}`;
-          } else if (result.groupsCreated > 0) {
-            message = `✅ Created ${
-              result.groupsCreated
-            } groups!\n\n${result.groups.map((n) => `• ${n}`).join("\n")}`;
-          } else if (result.tabsAddedToExisting > 0) {
-            message = `✅ Added ${result.tabsAddedToExisting} tab(s) to existing groups!`;
-          }
-          addMessage(message, "bot");
-          await updateTabCount();
-          await loadGroups();
-          setShowGroupManager(true);
-        } else {
-          addMessage(`❌ Error: ${result.error}`, "bot");
-        }
         return;
       }
 
-      // Fallback for general chat
       if (sessionRef.current) {
         const response = await sessionRef.current.prompt(text);
         setLoading(false);
@@ -1171,7 +1053,6 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
       }
     } catch (err) {
       setLoading(false);
-      // *** FIX: This ensures a valid string is always displayed ***
       const errorMessage = err?.message || String(err) || "An unknown error occurred in handleSend";
       console.error("Error in handleSend:", err);
       addMessage(`❌ Error: ${errorMessage}`, "bot");
@@ -1179,28 +1060,38 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
   };
 
   const quickOrganize = async () => {
-    setLoading(true); // <-- NEW
-    addMessage("🤖 AI analyzing tabs...", "system"); // <-- NEW
+    setLoading(true);
+    addMessage("🤖 AI analyzing tabs...", "system");
     try {
       const response = await chrome.runtime.sendMessage({
         action: "organizeNow",
       });
       
-      setLoading(false); // <-- NEW
+      setLoading(false);
       if (response && response.success) {
-        addMessage("✅ Organization complete! Groups are being updated.", "bot");
+        let message = "";
+        if (response.groupsCreated > 0 && response.tabsAddedToExisting > 0) {
+          message = `✅ Created ${response.groupsCreated} new group(s) and added ${response.tabsAddedToExisting} tab(s) to existing groups!`;
+        } else if (response.groupsCreated > 0) {
+          message = `✅ Created ${response.groupsCreated} new group(s)!`;
+        } else if (response.tabsAddedToExisting > 0) {
+          message = `✅ Added ${response.tabsAddedToExisting} tab(s) to existing groups!`;
+        } else {
+          message = response.message || "✅ Organization complete!";
+        }
+        
+        addMessage(message, "bot");
         setTimeout(async () => {
           await updateTabCount();
           await loadGroups();
-          setShowGroupManager(true); // <-- NEW
+          setShowGroupManager(true);
         }, 1500); 
       } else {
-        // Use the error message from the background
         const errorMsg = response?.error || "Could not trigger background organization";
         addMessage(`❌ ${errorMsg}`, "bot");
       }
     } catch (err) {
-      setLoading(false); // <-- NEW
+      setLoading(false);
       const errorMsg = err?.message || String(err) || "A critical error occurred.";
       addMessage(`❌ Error: ${errorMsg}`, "bot");
     }
@@ -1215,7 +1106,6 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
     chrome.storage.local.remove("chatMessages");
   };
 
-  // ---------------------- UI Render ----------------------
   return (
     <div
       className={`w-[500px] h-[600px] ${isDark

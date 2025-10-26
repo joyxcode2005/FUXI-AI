@@ -1,16 +1,19 @@
-// src/background/index.js - FINAL MERGED VERSION
+// src/background/index.js - OPTIMIZED VERSION
 import Fuse from "fuse.js";
 import { systemPrompt, parseAIResponse } from "../utils";
 
 let aiSession = null;
 let aiStatus = "initializing";
 let isProcessing = false;
-let monitorInterval = null; // Old timer ID, no longer used by new logic
 let autoGroupingEnabled = true;
-let organizeDebounceTimer = null; // <-- NEW: For smart auto-grouping
+let organizeDebounceTimer = null;
 
 let fuse = null;
 let indexDocs = [];
+let isIndexing = false; // Prevent concurrent index builds
+let snippetRequestCache = new Set(); // Track pending snippet requests
+let lastIndexBuild = 0; // Timestamp of last index build
+const INDEX_BUILD_COOLDOWN = 2000; // Minimum 2s between index builds
 
 const FUSE_OPTIONS = {
   keys: [
@@ -18,21 +21,36 @@ const FUSE_OPTIONS = {
     { name: "snippet", weight: 0.45 },
     { name: "url", weight: 0.15 },
   ],
-  threshold: 0.8, // <-- INCREASED from 0.6. This is much more lenient.
+  threshold: 0.8,
   includeScore: true,
   ignoreLocation: true,
-  minMatchCharLength: 1, // <-- DECREASED from 2. Will match anything.
+  minMatchCharLength: 1,
   useExtendedSearch: false,
-  distance: 200, // <-- INCREASED from 150.
+  distance: 200,
   shouldSort: true,
 };
 
 const SNIPPETS_STORAGE_KEY = "_tabSnippets_v1";
 
-// ✨ ENHANCED: Caching for API results
+// Enhanced caching with TTL
 const githubCache = new Map();
 const stackCache = new Map();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const CACHE_TTL = 5 * 60 * 1000;
+
+// Cleanup old cache entries
+function cleanupCache(cache) {
+  const now = Date.now();
+  for (const [key, value] of cache.entries()) {
+    if (now - value.timestamp > CACHE_TTL) {
+      cache.delete(key);
+    }
+  }
+}
+
+setInterval(() => {
+  cleanupCache(githubCache);
+  cleanupCache(stackCache);
+}, 60000); // Cleanup every minute
 
 async function loadPersistedSnippets() {
   try {
@@ -71,13 +89,28 @@ chrome.storage.onChanged.addListener((changes) => {
   if (changes.autoGroupingEnabled) {
     autoGroupingEnabled = changes.autoGroupingEnabled.newValue;
     console.log("🔄 Auto-grouping toggled:", autoGroupingEnabled);
-    
-    // ✨ FIX: Removed old timer logic
   }
 });
 
-// ✨ ENHANCED: Better index building with validation
+// OPTIMIZED: Build index with cooldown and deduplication
 async function buildFuseIndex() {
+  const now = Date.now();
+  
+  // Prevent concurrent builds
+  if (isIndexing) {
+    console.log("📚 [BG] Index build already in progress, skipping");
+    return false;
+  }
+  
+  // Enforce cooldown
+  if (now - lastIndexBuild < INDEX_BUILD_COOLDOWN) {
+    console.log("📚 [BG] Index build on cooldown, skipping");
+    return false;
+  }
+  
+  isIndexing = true;
+  lastIndexBuild = now;
+  
   try {
     const windows = await chrome.windows.getAll({ populate: true, windowTypes: ["normal"] });
     const docs = [];
@@ -131,6 +164,8 @@ async function buildFuseIndex() {
     indexDocs = [];
     fuse = new Fuse([], FUSE_OPTIONS);
     return false;
+  } finally {
+    isIndexing = false;
   }
 }
 
@@ -180,7 +215,6 @@ async function updateSnippetForTab(tabId, snippetText, tabUrl = null, title = nu
   console.log(`✅ [BG] Updated snippet for tab ${tabId} (${s.length} chars)`);
 }
 
-// ✨ ENHANCED: Better Google scraping with multiple patterns
 async function fetchFirstGoogleResult(query) {
   const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
   
@@ -286,9 +320,7 @@ async function fetchFirstGoogleResult(query) {
   }
 }
 
-// 🆕 COMPLETELY REWRITTEN: GitHub search with exact repo matching
 async function fetchFirstGitHubResult(query) {
-  // Check cache first
   const cacheKey = query.toLowerCase().trim();
   const cached = githubCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
@@ -300,7 +332,6 @@ async function fetchFirstGitHubResult(query) {
     const lowerQuery = query.toLowerCase();
     console.log(`🔍 [BG] GitHub search: "${query}"`);
 
-    // Strategy 1: Direct owner/repo pattern (e.g., "facebook/react" or "redis/redis")
     const directMatch = query.match(/([a-zA-Z0-9_-]+)\/([a-zA-Z0-9_.-]+)/);
     if (directMatch) {
       const repoUrl = `https://github.com/${directMatch[0]}`;
@@ -317,15 +348,11 @@ async function fetchFirstGitHubResult(query) {
       return result;
     }
 
-    // Strategy 2: Known popular repositories (exact mapping)
     const knownRepos = {
-      // JavaScript/Node
       'nodejs': 'nodejs/node',
       'node': 'nodejs/node',
       'node.js': 'nodejs/node',
       'npm': 'npm/cli',
-      
-      // Frontend Frameworks
       'react': 'facebook/react',
       'reactjs': 'facebook/react',
       'vue': 'vuejs/vue',
@@ -333,15 +360,11 @@ async function fetchFirstGitHubResult(query) {
       'vue.js': 'vuejs/vue',
       'angular': 'angular/angular',
       'svelte': 'sveltejs/svelte',
-      
-      // Build Tools
       'webpack': 'webpack/webpack',
       'vite': 'vitejs/vite',
       'rollup': 'rollup/rollup',
       'parcel': 'parcel-bundler/parcel',
       'esbuild': 'evanw/esbuild',
-      
-      // Meta Frameworks
       'next': 'vercel/next.js',
       'nextjs': 'vercel/next.js',
       'next.js': 'vercel/next.js',
@@ -349,39 +372,27 @@ async function fetchFirstGitHubResult(query) {
       'nuxtjs': 'nuxt/nuxt',
       'gatsby': 'gatsbyjs/gatsby',
       'remix': 'remix-run/remix',
-      
-      // Backend Frameworks
       'express': 'expressjs/express',
       'expressjs': 'expressjs/express',
       'nest': 'nestjs/nest',
       'nestjs': 'nestjs/nest',
       'fastify': 'fastify/fastify',
       'koa': 'koajs/koa',
-      
-      // TypeScript
       'typescript': 'microsoft/TypeScript',
       'ts': 'microsoft/TypeScript',
-      
-      // Testing
       'jest': 'jestjs/jest',
       'vitest': 'vitest-dev/vitest',
       'cypress': 'cypress-io/cypress',
       'playwright': 'microsoft/playwright',
-      
-      // State Management
       'redux': 'reduxjs/redux',
       'mobx': 'mobxjs/mobx',
       'zustand': 'pmndrs/zustand',
       'recoil': 'facebookexperimental/Recoil',
-      
-      // Utilities
       'lodash': 'lodash/lodash',
       'axios': 'axios/axios',
       'moment': 'moment/moment',
       'dayjs': 'iamkun/dayjs',
       'date-fns': 'date-fns/date-fns',
-      
-      // UI Libraries
       'jquery': 'jquery/jquery',
       'bootstrap': 'twbs/bootstrap',
       'tailwind': 'tailwindlabs/tailwindcss',
@@ -390,8 +401,6 @@ async function fetchFirstGitHubResult(query) {
       'mui': 'mui/material-ui',
       'chakra': 'chakra-ui/chakra-ui',
       'antd': 'ant-design/ant-design',
-      
-      // Databases & ORMs
       'prisma': 'prisma/prisma',
       'typeorm': 'typeorm/typeorm',
       'sequelize': 'sequelize/sequelize',
@@ -401,13 +410,9 @@ async function fetchFirstGitHubResult(query) {
       'postgres': 'postgres/postgres',
       'postgresql': 'postgres/postgres',
       'mysql': 'mysql/mysql-server',
-      
-      // GraphQL
       'graphql': 'graphql/graphql-js',
       'apollo': 'apollographql/apollo-client',
       'relay': 'facebook/relay',
-      
-      // Python
       'python': 'python/cpython',
       'django': 'django/django',
       'flask': 'pallets/flask',
@@ -416,48 +421,28 @@ async function fetchFirstGitHubResult(query) {
       'tensorflow': 'tensorflow/tensorflow',
       'numpy': 'numpy/numpy',
       'pandas': 'pandas-dev/pandas',
-      
-      // Go
       'go': 'golang/go',
       'golang': 'golang/go',
-      
-      // Rust
       'rust': 'rust-lang/rust',
-      
-      // Java
       'spring': 'spring-projects/spring-framework',
       'hibernate': 'hibernate/hibernate-orm',
-      
-      // Ruby
       'rails': 'rails/rails',
       'ruby': 'ruby/ruby',
-      
-      // PHP
       'laravel': 'laravel/laravel',
       'symfony': 'symfony/symfony',
-      
-      // DevOps
       'docker': 'docker/docker-ce',
       'kubernetes': 'kubernetes/kubernetes',
       'k8s': 'kubernetes/kubernetes',
       'terraform': 'hashicorp/terraform',
       'ansible': 'ansible/ansible',
-      
-      // Editors & Tools
       'vscode': 'microsoft/vscode',
       'code': 'microsoft/vscode',
       'vim': 'vim/vim',
       'neovim': 'neovim/neovim',
-      
-      // Desktop
       'electron': 'electron/electron',
       'tauri': 'tauri-apps/tauri',
-      
-      // Mobile
       'react-native': 'facebook/react-native',
       'flutter': 'flutter/flutter',
-      
-      // Other
       'deno': 'denoland/deno',
       'bun': 'oven-sh/bun',
       'firebase': 'firebase/firebase-js-sdk',
@@ -466,11 +451,9 @@ async function fetchFirstGitHubResult(query) {
       'babel': 'babel/babel',
     };
 
-    // Sort by length (longest first) to match "next.js" before "next"
     const sortedKeys = Object.keys(knownRepos).sort((a, b) => b.length - a.length);
 
     for (const key of sortedKeys) {
-      // Use word boundaries for exact matching
       const regex = new RegExp(`\\b${key}\\b`, 'i');
       if (regex.test(query)) {
         const repoSlug = knownRepos[key];
@@ -489,7 +472,6 @@ async function fetchFirstGitHubResult(query) {
       }
     }
 
-    // Strategy 3: API Search with intelligent matching
     const cleanQuery = query
       .replace(/github|repo|repository|how to|tutorial|example|docs|documentation/gi, ' ')
       .replace(/\s+/g, ' ')
@@ -501,11 +483,10 @@ async function fetchFirstGitHubResult(query) {
 
     console.log(`[BG] GitHub API search: "${cleanQuery}"`);
 
-    // Try multiple search strategies
     const searchStrategies = [
-      `${cleanQuery} in:name`,  // Exact name match
-      `${cleanQuery} stars:>1000`, // Popular repos only
-      cleanQuery // General search
+      `${cleanQuery} in:name`,
+      `${cleanQuery} stars:>1000`,
+      cleanQuery
     ];
 
     for (const searchQuery of searchStrategies) {
@@ -529,12 +510,10 @@ async function fetchFirstGitHubResult(query) {
         let bestMatch = null;
         const lowerCleanQuery = cleanQuery.toLowerCase();
 
-        // Priority 1: Exact full_name match (owner/repo)
         bestMatch = data.items.find(repo =>
           repo.full_name.toLowerCase() === lowerCleanQuery
         );
 
-        // Priority 2: Exact repository name match
         if (!bestMatch) {
           bestMatch = data.items.find(repo =>
             repo.name.toLowerCase() === lowerCleanQuery ||
@@ -542,14 +521,12 @@ async function fetchFirstGitHubResult(query) {
           );
         }
 
-        // Priority 3: Repository name starts with query
         if (!bestMatch) {
           bestMatch = data.items.find(repo =>
             repo.name.toLowerCase().startsWith(lowerCleanQuery)
           );
         }
         
-        // Priority 4: Owner name matches (e.g., "nodejs" → nodejs/node)
         if (!bestMatch) {
           bestMatch = data.items.find(repo => {
             const owner = repo.full_name.split('/')[0].toLowerCase();
@@ -557,14 +534,12 @@ async function fetchFirstGitHubResult(query) {
           });
         }
 
-        // Priority 5: Name contains query
         if (!bestMatch) {
           bestMatch = data.items.find(repo =>
             repo.name.toLowerCase().includes(lowerCleanQuery)
           );
         }
 
-        // Fallback: Most starred
         if (!bestMatch) {
           bestMatch = data.items[0];
         }
@@ -596,7 +571,6 @@ async function fetchFirstGitHubResult(query) {
   }
 }
 
-// ✨ ENHANCED: Stack Overflow search with caching
 async function fetchFirstStackOverflowResult(query) {
   const cacheKey = query.toLowerCase().trim();
   const cached = stackCache.get(cacheKey);
@@ -659,28 +633,21 @@ async function fetchFirstStackOverflowResult(query) {
   }
 }
 
-// 🆕 ENHANCED: Specific site URL mapping with exact paths
 function getSpecificSiteUrl(query) {
   const lower = query.toLowerCase().trim();
   
-  // Exact URL mappings for specific requests
   const exactMappings = {
-    // Social Media - Specific sections
     'instagram reels': 'https://www.instagram.com/reels/',
     'instagram reel': 'https://www.instagram.com/reels/',
     'watch reels': 'https://www.instagram.com/reels/',
     'watch reel': 'https://www.instagram.com/reels/',
     'youtube shorts': 'https://www.youtube.com/shorts',
     'watch shorts': 'https://www.youtube.com/shorts',
-    
-    // Music - Always Spotify
     'listen to music': 'https://open.spotify.com',
     'listen music': 'https://open.spotify.com',
     'play music': 'https://open.spotify.com',
     'music': 'https://open.spotify.com',
     'spotify': 'https://open.spotify.com',
-    
-    // Common sites
     'youtube': 'https://www.youtube.com',
     'gmail': 'https://mail.google.com',
     'google': 'https://www.google.com',
@@ -697,7 +664,6 @@ function getSpecificSiteUrl(query) {
     'news': 'https://news.google.com',
   };
 
-  // Check exact matches (longest first)
   const sortedKeys = Object.keys(exactMappings).sort((a, b) => b.length - a.length);
   for (const key of sortedKeys) {
     if (lower === key || lower.includes(key)) {
@@ -712,11 +678,9 @@ function getSpecificSiteUrl(query) {
   return { matched: false };
 }
 
-// ✨ ENHANCED: Smart platform detection
 function detectPlatform(query) {
   const lower = query.toLowerCase();
   
-  // Specialist platforms (highest priority)
   if (lower.includes('github') || lower.includes('repo') || lower.match(/\bgit\b/)) {
     return 'github';
   }
@@ -725,7 +689,6 @@ function detectPlatform(query) {
     return 'stackoverflow';
   }
   
-  // General platforms
   const platforms = {
     youtube: ['youtube', 'video', 'tutorial', 'watch'],
     reddit: ['reddit', 'discussion', 'subreddit'],
@@ -744,16 +707,13 @@ function detectPlatform(query) {
   return null;
 }
 
-// ✨ ENHANCED: performWebSearch with better routing
 async function performWebSearch(query) {
   try {
     console.log(`🔍 [BG] Web search: "${query}"`);
     
-    // *** FIX: Specialist platform detection must run FIRST ***
     const platform = detectPlatform(query);
     console.log(`🎯 [BG] Platform: ${platform || 'general'}`);
 
-    // Route to specialist handlers
     if (platform === 'github') {
       return await fetchFirstGitHubResult(query);
     }
@@ -762,7 +722,6 @@ async function performWebSearch(query) {
       return await fetchFirstStackOverflowResult(query);
     }
 
-    // Check for specific site URLs (e.g., "github" -> github.com)
     const specificSite = getSpecificSiteUrl(query);
     if (specificSite.matched) {
       console.log(`✅ [BG] Specific site mapping: ${specificSite.url}`);
@@ -776,7 +735,6 @@ async function performWebSearch(query) {
       };
     }
     
-    // Platform-specific search pages (if not specialist)
     if (platform) {
       const searchUrls = {
         youtube: `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`,
@@ -800,7 +758,6 @@ async function performWebSearch(query) {
       }
     }
 
-    // Default: Google scrape
     console.log(`[BG] Using Google search`);
     return await fetchFirstGoogleResult(query);
 
@@ -817,23 +774,19 @@ async function performWebSearch(query) {
   }
 }
 
-// ✨ ENHANCED: resolveQueryToURL with better logic
 async function resolveQueryToURL(query, aiSession) {
   console.log(`🔍 [BG] Resolving: "${query}"`);
 
-  // Check for direct URLs
   if (/^https?:\/\//i.test(query)) {
     return { success: true, url: query, title: query, method: 'direct-url' };
   }
 
-  // Specialist search (MOVED UP)
   const platform = detectPlatform(query);
   if (platform === 'github' || platform === 'stackoverflow') {
     console.log(`🎯 [BG] Specialist: ${platform}`);
     return await performWebSearch(query);
   }
 
-  // Check specific site mappings (MOVED DOWN)
   const specificSite = getSpecificSiteUrl(query);
   if (specificSite.matched) {
     console.log(`✅ [BG] Specific site: ${specificSite.url}`);
@@ -849,19 +802,116 @@ async function resolveQueryToURL(query, aiSession) {
 
   const lowerQuery = query.toLowerCase().trim();
   
-  // Domain-like query
   if (query.includes('.') && !query.includes(' ')) {
-    const url = query.startsWith('http') ? query : `https://`;
+    const url = query.startsWith('http') ? query : `https://${query}`;
     console.log(`✅ [BG] Domain: ${url}`);
     return { success: true, url, title: query, method: 'domain' };
   }
 
-  // Default to web search
   console.log(`[BG] Web search fallback`);
   return await performWebSearch(query);
 }
 
-// AI and grouping functions
+// CORE GROUPING LOGIC - Shared by both auto and manual
+async function performGrouping(userRequest = "") {
+  try {
+    const ungroupedTabs = await getUngroupedTabs();
+
+    if (ungroupedTabs.length === 0) {
+      return { success: true, message: "No ungrouped tabs found", groupsCreated: 0, tabsAddedToExisting: 0 };
+    }
+
+    console.log(`[BG] Grouping ${ungroupedTabs.length} ungrouped tabs...`);
+
+    const existingGroups = await getExistingGroups();
+
+    let aiResult = await askAIToGroupTabs(ungroupedTabs, existingGroups, userRequest);
+    if (!aiResult.valid) {
+      console.warn("[BG] AI grouping failed, using fallback:", aiResult.error);
+      aiResult = createFallbackGroups(ungroupedTabs, existingGroups);
+    }
+
+    if (aiResult.valid) {
+      console.log("[BG] Grouping strategy:", aiResult.explanation);
+      const result = await createMultipleGroups(aiResult.groups, existingGroups);
+      
+      if (result.success) {
+        const message = [];
+        if (result.groupsCreated > 0) {
+          message.push(`Created ${result.groupsCreated} new group(s)`);
+        }
+        if (result.tabsAddedToExisting > 0) {
+          message.push(`Added ${result.tabsAddedToExisting} tab(s) to existing groups`);
+        }
+        console.log(`✅ [BG] ${message.join(", ")}`);
+        return { 
+          success: true, 
+          message: message.join(", "),
+          groupsCreated: result.groupsCreated,
+          tabsAddedToExisting: result.tabsAddedToExisting
+        };
+      } else {
+        console.warn("[BG] createMultipleGroups reported no success:", result.error);
+        return { success: false, error: result.error };
+      }
+    }
+    
+    return { success: false, error: "Grouping failed" };
+  } catch (err) {
+    console.error("[BG] Grouping error:", err);
+    return { success: false, error: err.message };
+  }
+}
+
+// AUTO-GROUPING: Debounced, only for new/updated tabs
+function debouncedAutoGrouping(delay = 15000) {
+  if (!autoGroupingEnabled) {
+    console.log("[BG] Auto-grouping trigger skipped (disabled).");
+    return;
+  }
+  
+  clearTimeout(organizeDebounceTimer);
+  console.log(`[BG] Auto-grouping scheduled in ${delay / 1000}s...`);
+  
+  organizeDebounceTimer = setTimeout(async () => {
+    if (isProcessing) {
+      console.log("[BG] Auto-grouping skipped (already processing).");
+      return;
+    }
+    
+    isProcessing = true;
+    console.log("⏰ [BG] Running auto-grouping...");
+    
+    try {
+      await performGrouping("Auto-organize new tabs");
+    } catch (err) {
+      console.error("[BG] Auto-grouping error:", err);
+    } finally {
+      isProcessing = false;
+    }
+  }, delay);
+}
+
+// MANUAL ORGANIZATION: Immediate, user-triggered
+async function organizeNow() {
+  if (isProcessing) {
+    return { success: false, error: "Already processing" };
+  }
+
+  isProcessing = true;
+  console.log("🔥 [BG] Manual organization started...");
+  
+  try {
+    const result = await performGrouping("User requested organization");
+    return result;
+  } catch (err) {
+    console.error("[BG] Manual organization error:", err);
+    return { success: false, error: err.message };
+  } finally {
+    isProcessing = false;
+  }
+}
+
 async function initializeAI() {
   if (!autoGroupingEnabled) {
     console.log("🚫 AI init skipped (disabled)");
@@ -879,9 +929,9 @@ async function initializeAI() {
         aiStatus = "ready";
         console.log("✅ AI ready");
 
-        // startTabMonitoring(); // <-- ✨ FIX: REMOVED OLD TIMER
         await buildFuseIndex();
-        setTimeout(() => organizeExistingTabs(), 2000);
+        // Run initial organization after 3 seconds
+        setTimeout(() => organizeNow(), 3000);
       } else {
         aiStatus = "unavailable";
         console.log("❌ AI unavailable");
@@ -895,25 +945,6 @@ async function initializeAI() {
     console.error("AI init error:", err);
   }
 }
-
-// ✨ FIX: REMOVED stopTabMonitoring() and startTabMonitoring() functions
-
-// ✨ NEW: Debounced organization function
-function debouncedOrganize(delay = 15000) { // 15-second delay
-  if (!autoGroupingEnabled) {
-    console.log("[BG] Auto-grouping trigger skipped (disabled).");
-    return;
-  }
-  
-  clearTimeout(organizeDebounceTimer);
-  console.log(`[BG] Auto-grouping triggered. Will run in ${delay / 1000}s...`);
-  
-  organizeDebounceTimer = setTimeout(() => {
-    console.log("⏰ [BG] Debounce timer fired. Running auto-grouping...");
-    organizeExistingTabs(false); // Pass false to respect 'isProcessing' check
-  }, delay);
-}
-
 
 async function getUngroupedTabs() {
   const windows = await chrome.windows.getAll({
@@ -1224,7 +1255,7 @@ function findExistingGroup(existingGroupMap, keywords) {
 async function createMultipleGroups(groupedTabs, existingGroups = []) {
   try {
     let groupsCreated = 0;
-    let tabsAddedCount = 0; // <-- Correct variable name
+    let tabsAddedCount = 0;
     const colors = [
       "blue", "red", "yellow", "green", "pink", "purple", "cyan", "orange",
     ];
@@ -1264,7 +1295,7 @@ async function createMultipleGroups(groupedTabs, existingGroups = []) {
             groupId: existingGroup.id,
             tabIds: validTabIds
           });
-          tabsAddedCount += validTabIds.length; // <-- Correct variable name
+          tabsAddedCount += validTabIds.length;
           console.log(`✅ Added ${validTabIds.length} tab(s) to existing group: ${groupName}`);
         } else {
           const groupId = await chrome.tabs.group({ tabIds: validTabIds });
@@ -1279,11 +1310,11 @@ async function createMultipleGroups(groupedTabs, existingGroups = []) {
       }
     }
 
-   const success = (groupsCreated > 0 || tabsAddedCount > 0);
+    const success = (groupsCreated > 0 || tabsAddedCount > 0);
     return {
       success: success,
       groupsCreated,
-      tabsAddedToExisting: tabsAddedCount, // <-- Correct variable name
+      tabsAddedToExisting: tabsAddedCount,
       error: success ? null : "No tabs were grouped. (They might be already grouped)"
     };
   } catch (err) {
@@ -1292,73 +1323,26 @@ async function createMultipleGroups(groupedTabs, existingGroups = []) {
   }
 }
 
-async function organizeExistingTabs(force = false) {
-  if (!force && !autoGroupingEnabled) {
-    console.log("[BG] Auto-grouping skipped (disabled).");
-    return { success: false, error: "Auto-grouping is disabled" };
+// OPTIMIZED: Request snippet only once per tab
+async function requestSnippetFromTab(tabId) {
+  if (snippetRequestCache.has(tabId)) {
+    return; // Already requested for this tab
   }
   
-  if (isProcessing) {
-    console.log("[BG] Auto-grouping skipped (already processing).");
-    return { success: false, error: "Already processing" };
-  }
-
-  isProcessing = true;
-  let resultSummary = { success: false, error: "No action taken" };
-
-  try {
-    const ungroupedTabs = await getUngroupedTabs();
-
-    if (ungroupedTabs.length > 0) {
-      console.log(`[BG] Auto-grouping ${ungroupedTabs.length} ungrouped tabs...`);
-
-      const existingGroups = await getExistingGroups();
-
-      let aiResult = await askAIToGroupTabs(ungroupedTabs, existingGroups);
-      if (!aiResult.valid) {
-        console.warn("[BG] AI grouping failed, using fallback:", aiResult.error);
-        aiResult = createFallbackGroups(ungroupedTabs, existingGroups);
-      }
-
-      if (aiResult.valid) {
-        console.log("[BG] Grouping strategy:", aiResult.explanation);
-        const result = await createMultipleGroups(aiResult.groups, existingGroups);
-        
-        if (result.success) {
-          const message = [];
-          if (result.groupsCreated > 0) {
-            message.push(`Created ${result.groupsCreated} new group(s)`);
-          }
-          if (result.tabsAddedToExisting > 0) {
-            message.push(`Added ${result.tabsAddedToExisting} tab(s) to existing groups`);
-          }
-          console.log(`✅ [BG] ${message.join(", ")}`);
-          resultSummary = { success: true, message: message.join(", ") };
-        } else {
-          console.warn("[BG] createMultipleGroups reported no success:", result.error);
-          resultSummary = { success: false, error: result.error };
-        }
-      }
-    } else {
-      console.log("[BG] No ungrouped tabs to organize.");
-      resultSummary = { success: true, message: "No ungrouped tabs found" };
-    }
-  } catch (err) {
-    console.error("[BG] Organize error:", err);
-    resultSummary = { success: false, error: err.message };
-  } finally {
-    isProcessing = false;
-  }
-  return resultSummary; // Return the result
-}
-
-async function requestSnippetFromTab(tabId) {
+  snippetRequestCache.add(tabId);
+  
   try {
     await chrome.tabs.sendMessage(tabId, { action: "sendPageSnippet" });
-  } catch (err) { /* Content script not ready or tab restricted */ }
+  } catch (err) {
+    // Content script not ready or tab restricted
+  }
+  
+  // Remove from cache after 30 seconds
+  setTimeout(() => {
+    snippetRequestCache.delete(tabId);
+  }, 30000);
 }
 
-// ✨ ENHANCED: Message listener with better error handling
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   try {
     if (!request || !request.action) {
@@ -1374,13 +1358,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     if (action === "organizeNow") {
-      organizeExistingTabs(true)
-        .then((result) => sendResponse(result)) // <-- Pass the result back
+      organizeNow()
+        .then((result) => sendResponse(result))
         .catch(err => sendResponse({ success: false, error: err.message }));
       return true;
     }
 
-    // ✨ ENHANCED: Fuse search with better filtering
     if (action === "fuseSearch") {
       (async () => {
         const q = (request.query || "").trim();
@@ -1394,29 +1377,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         await ensureIndex();
 
         try {
-          // --- DEBUGGING ---
-          console.log(`[BG] fuseSearch: Searching for "${q}" with threshold ${FUSE_OPTIONS.threshold}`);
-          const gmailTabDoc = indexDocs.find(doc => doc.url.includes("mail.google.com") && doc.snippet.length > 500);
-          if (gmailTabDoc) {
-            console.log(`[BG] fuseSearch: Found Gmail snippet for tab ${gmailTabDoc.id} (len: ${gmailTabDoc.snippet.length}). Searching...`);
-          } else if (q.toLowerCase().includes("devpost")) { // Only warn if relevant
-            console.warn(`[BG] fuseSearch: "Devpost" NOT found in any indexed Gmail snippet.`);
-          }
-          // --- END DEBUGGING ---
-
           const raw = fuse.search(q, { limit: limit * 3 });
-          
-          // --- DEBUGGING ---
-          console.log(`[BG] fuseSearch: Raw Fuse results (pre-filter): ${raw.length}`);
-          raw.slice(0, 5).forEach((r, i) => {
-            console.log(`  Result ${i}: score ${r.score.toFixed(4)}, title: ${r.item.title.slice(0, 30)}...`);
-          });
-          // --- END DEBUGGING ---
           
           const validResults = [];
           for (const r of raw) {
             if (r.score > FUSE_OPTIONS.threshold) {
-              console.log(`[BG] fuseSearch: Pruning result with score ${r.score.toFixed(4)} (>${FUSE_OPTIONS.threshold}) - ${r.item.title}`);
               continue;
             }
             
@@ -1439,10 +1404,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           }
 
           const results = validResults.slice(0, limit);
-
-          if (results.length === 0 && raw.length > 0) {
-            console.warn(`[BG] fuseSearch: All ${raw.length} results were pruned by score threshold.`);
-          }
 
           if (results.length === 0) {
             console.log("🔍 No Fuse results, fallback search");
@@ -1549,35 +1510,41 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
-// Tab event listeners
+// OPTIMIZED TAB EVENT LISTENERS
 chrome.tabs.onCreated.addListener((tab) => {
-  setTimeout(buildFuseIndex, 1000);
+  // Debounced index rebuild
+  setTimeout(() => buildFuseIndex(), 1500);
+  
+  // Request snippet after page loads
   setTimeout(() => {
     if (tab.id) requestSnippetFromTab(tab.id);
   }, 4000);
   
-  // ✨ FIX: Only trigger if it's a real tab
+  // Trigger auto-grouping only for real tabs
   if (tab.url && !tab.url.startsWith("chrome://")) {
-    debouncedOrganize(10000); // 10s delay for a single new tab
+    debouncedAutoGrouping(10000); // 10s delay for new tabs
   }
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
+  // Immediate index update for removals
   indexDocs = indexDocs.filter(doc => doc.id !== tabId);
   if (indexDocs.length > 0) {
     fuse = new Fuse(indexDocs, FUSE_OPTIONS);
   }
-  setTimeout(buildFuseIndex, 500);
+  
+  // Clean up cache
+  snippetRequestCache.delete(tabId);
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === "complete") {
-    setTimeout(buildFuseIndex, 1000);
+    setTimeout(() => buildFuseIndex(), 1500);
     setTimeout(() => requestSnippetFromTab(tabId), 2000);
     
-    // ✨ FIX: Trigger auto-grouping when a tab finishes loading
+    // Trigger auto-grouping when ungrouped tab finishes loading
     if (tab.url && !tab.url.startsWith("chrome://") && tab.groupId === chrome.tabGroups.TAB_GROUP_ID_NONE) {
-      debouncedOrganize(15000); // 15s delay for updated tabs
+      debouncedAutoGrouping(15000); // 15s delay for updated tabs
     }
   } else if (changeInfo.title) {
     const docIndex = indexDocs.findIndex(d => d.id === tabId);
@@ -1588,17 +1555,23 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     const docIndex = indexDocs.findIndex(d => d.id === tabId);
     if (docIndex !== -1) {
       indexDocs[docIndex].groupId = changeInfo.groupId ?? chrome.tabGroups.TAB_GROUP_ID_NONE;
-      setTimeout(buildFuseIndex, 500);
+      setTimeout(() => buildFuseIndex(), 500);
     }
   }
 });
 
+// OPTIMIZED: Less frequent window focus updates
+let windowFocusTimeout = null;
 chrome.windows.onFocusChanged && chrome.windows.onFocusChanged.addListener(() => {
-  setTimeout(buildFuseIndex, 500);
+  clearTimeout(windowFocusTimeout);
+  windowFocusTimeout = setTimeout(() => buildFuseIndex(), 1000);
 });
 
+// OPTIMIZED: Less frequent tab group updates
+let tabGroupUpdateTimeout = null;
 chrome.tabGroups.onUpdated && chrome.tabGroups.onUpdated.addListener(() => {
-  setTimeout(buildFuseIndex, 500);
+  clearTimeout(tabGroupUpdateTimeout);
+  tabGroupUpdateTimeout = setTimeout(() => buildFuseIndex(), 1000);
 });
 
 chrome.runtime.onInstalled.addListener((details) => {
@@ -1641,4 +1614,4 @@ chrome.runtime.onStartup.addListener(() => {
 
 initializeAI();
 
-console.log("🚀 [BG] AI Tab Manager loaded with enhanced search & GitHub matching");
+console.log("🚀 [BG] AI Tab Manager loaded - OPTIMIZED VERSION");

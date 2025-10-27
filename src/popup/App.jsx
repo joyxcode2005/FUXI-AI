@@ -1,9 +1,7 @@
 // src/popup/App.jsx - REFINED UI VERSION 2 (Chat Area)
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
-  aiReadyMessage,
   aiUnavailableMessage,
-  createMultipleGroups,
   getAllGroups,
   groupExistingTabs,
   helpMessage,
@@ -90,6 +88,7 @@ export default function App() {
   const [newGroupName, setNewGroupName] = useState("");
   const [language, setLanguage] = useState({ name: "English", code: "en" });
   const [enabled, setEnabled] = useState(true);
+  const [awaitingUsername, setAwaitingUsername] = useState(false);
 
   const sessionRef = useRef(null);
   const chatEndRef = useRef(null);
@@ -104,6 +103,7 @@ export default function App() {
         "tabManagerTheme",
         "autoGroupingEnabled",
         "selectedLanguage", // Load the saved language
+        "awaitingUsername",
       ],
       (data) => {
         // Load Chat Messages
@@ -126,6 +126,11 @@ export default function App() {
 
         // Load Toggle State (from your first hook)
         setEnabled(data.autoGroupingEnabled ?? true);
+
+        // Load awaiting username state
+        if (data.awaitingUsername === true) {
+          setAwaitingUsername(true);
+        }
 
         // Load and apply saved language
         const savedLanguage = data.selectedLanguage;
@@ -407,6 +412,14 @@ export default function App() {
           originalText: text,
         };
       }
+    }
+
+    // to check if the user is wanting to open github account
+    if (
+      lower.includes("github") &&
+      (lower.includes("account") || lower.includes("my profile"))
+    ) {
+      return { type: "openGithub" };
     }
 
     if (
@@ -1018,6 +1031,20 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
     setPrompt("");
     setLoading(true);
 
+    if (awaitingUsername) {
+      const username = text.trim();
+      setAwaitingUsername(false); // Reset the state
+      await chrome.storage.local.set({ githubUsername: username }); // Save username
+      await chrome.storage.local.remove("awaitingUsername"); // <--- ADD THIS to clear the flag
+
+      const url = `https://github.com/${username}`;
+      await chrome.tabs.create({ url: url, active: true });
+
+      addMessage(`✅ Saved and opened your GitHub profile: ${url}`, "bot");
+      setLoading(false);
+      return; // Stop here, we're done
+    }
+
     try {
       if (proofreaderRef.current) {
         try {
@@ -1105,6 +1132,28 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
           );
         }
         return;
+      }
+
+      if (command.type === "openGithub") {
+        chrome.storage.local.get("githubUsername", (data) => {
+          if (data.githubUsername) {
+            // We found a saved username
+            const url = `https://github.com/${data.githubUsername}`;
+            chrome.tabs.create({ url: url, active: true });
+            addMessage(`✅ Opening your saved GitHub profile: ${url}`, "bot");
+            setLoading(false);
+          } else {
+            // No username found, so ask for it
+            addMessage(
+              "🤔 I don't know your GitHub username. What is it?",
+              "bot"
+            );
+            setAwaitingUsername(true); // Set the flag
+            chrome.storage.local.set({ awaitingUsername: true }); // <--- ADD THIS to save the flag
+            setLoading(false);
+          }
+        });
+        return; // We must return here because the logic is async
       }
 
       if (command.type === "listGroups") {
@@ -1364,7 +1413,7 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
                       </div>
 
                       <div className="flex gap-1">
-                        <button 
+                        <button
                           onClick={() => handleRenameStart(group)}
                           className={`p-2 rounded-lg transition-all hover:scale-110 cursor-pointer ${
                             isDark

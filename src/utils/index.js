@@ -1,5 +1,4 @@
 // src/utils/index.js - COMPLETE VERSION
-// Enhanced System Prompt - More Reliable & Dynamic
 export const systemPrompt = `You are an expert Chrome Tab Organization AI. Your mission is to intelligently group browser tabs based on context, task, and semantic relationships.
 
 === CRITICAL OUTPUT RULES ===

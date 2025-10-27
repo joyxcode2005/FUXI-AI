@@ -1,7 +1,7 @@
-  import { useState, useRef, useEffect } from "react";
-  import { ChevronDown, Check, Globe } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { ChevronDown, Check, Globe } from "lucide-react";
 
-  const languages = [
+const languages = [
   { code: "en", name: "English", flag: "🇬🇧" },
   { code: "zh", name: "中文 (Chinese)", flag: "🇨🇳" },
   { code: "hi", name: "हिन्दी (Hindi)", flag: "🇮🇳" },
@@ -14,36 +14,42 @@
   { code: "ur", name: "اردو (Urdu)", flag: "🇵🇰" },
 ];
 
+export const LanguageDropdown = ({ isDark = true, onChange, value }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [selected, setSelected] = useState(value || languages[0]);
+  const dropdownRef = useRef(null);
 
-  export const LanguageDropdown = ({ isDark = true, onChange }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    const [selected, setSelected] = useState(languages[0]);
-    const dropdownRef = useRef(null);
+  useEffect(() => {
+    // Sync internal state if the parent's value prop changes
+    if (value) {
+      setSelected(value);
+    }
+  }, [value]);
 
-    // Close dropdown when clicking outside
-    useEffect(() => {
-      const handleClickOutside = (event) => {
-        if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-          setIsOpen(false);
-        }
-      };
-
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, []);
-
-    const handleSelect = (language) => {
-      setSelected(language);
-      setIsOpen(false);
-      onChange?.(language);
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
     };
 
-    return (
-      <div className="relative inline-block" ref={dropdownRef}>
-        {/* Trigger Button */}
-        <button
-          onClick={() => setIsOpen(!isOpen)}
-          className={`flex items-center gap-2 px-2 py-2 rounded-xl transition-all duration-200 border
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleSelect = (language) => {
+    setSelected(language);
+    setIsOpen(false);
+    onChange?.(language);
+  };
+
+  return (
+    <div className="relative inline-block" ref={dropdownRef}>
+      {/* Trigger Button */}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className={`flex items-center gap-2 px-2 py-2 rounded-xl transition-all duration-200 border
             ${
               isDark
                 ? "bg-slate-800/80 border-slate-700 hover:border-slate-600 text-white"
@@ -51,37 +57,37 @@
             }
             ${isOpen ? "ring-2 ring-cyan-500/50" : ""}
           `}
-        >
-          {/* <Globe
+      >
+        {/* <Globe
             size={16}
             className={isDark ? "text-cyan-400" : "text-cyan-600"}
           /> */}
-          <span className="text-lg">{selected.flag}</span>
-          <ChevronDown
-            size={16}
-            className={`transition-transform duration-200 ${
-              isOpen ? "rotate-180" : ""
-            }`}
-          />
-        </button>
+        <span className="text-lg">{selected.flag}</span>
+        <ChevronDown
+          size={16}
+          className={`transition-transform duration-200 ${
+            isOpen ? "rotate-180" : ""
+          }`}
+        />
+      </button>
 
-        {/* Dropdown Menu */}
-        {isOpen && (
-          <div
-            className={`absolute top-full -left-30 mt-2 w-56 rounded-xl shadow-2xl border overflow-hidden z-10 animate-dropdown
+      {/* Dropdown Menu */}
+      {isOpen && (
+        <div
+          className={`absolute top-full -left-30 mt-2 w-56 rounded-xl shadow-2xl border overflow-hidden z-10 animate-dropdown
               ${
                 isDark
                   ? "bg-slate-800 border-slate-700"
                   : "bg-white border-slate-200"
               }
             `}
-          >
-            <div className="max-h-80 overflow-y-auto custom-scrollbar">
-              {languages.map((language) => (
-                <button
-                  key={language.code}
-                  onClick={() => handleSelect(language)}
-                  className={`w-full flex items-center justify-between px-4 py-3 transition-all duration-150
+        >
+          <div className="max-h-80 overflow-y-auto custom-scrollbar">
+            {languages.map((language) => (
+              <button
+                key={language.code}
+                onClick={() => handleSelect(language)}
+                className={`w-full flex items-center justify-between px-4 py-3 transition-all duration-150
                     ${
                       selected.code === language.code
                         ? isDark
@@ -92,21 +98,21 @@
                         : "hover:bg-slate-50 text-slate-700"
                     }
                   `}
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-2xl">{language.flag}</span>
-                    <span className="text-sm font-medium">{language.name}</span>
-                  </div>
-                  {selected.code === language.code && (
-                    <Check size={16} className="text-cyan-500" />
-                  )}
-                </button>
-              ))}
-            </div>
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">{language.flag}</span>
+                  <span className="text-sm font-medium">{language.name}</span>
+                </div>
+                {selected.code === language.code && (
+                  <Check size={16} className="text-cyan-500" />
+                )}
+              </button>
+            ))}
           </div>
-        )}
+        </div>
+      )}
 
-        <style>{`
+      <style>{`
           @keyframes dropdown {
             from {
               opacity: 0;
@@ -143,8 +149,8 @@
             };
           }
         `}</style>
-      </div>
-    );
-  };
+    </div>
+  );
+};
 
-  export default LanguageDropdown;
+export default LanguageDropdown;

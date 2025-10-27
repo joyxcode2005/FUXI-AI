@@ -73,6 +73,10 @@ export default function App() {
   const [help, setHelp] = useState("Help");
   const [organise, setOrganise] = useState("Organise Now");
   const [clear, setClear] = useState("Clear Chat");
+  const [chatText, setChatText] = useState("Chat");
+  const [tabGroupText, setTabGroupText] = useState("Tab Groups");
+  const [groupText, setGroupText] = useState("Group");
+  const [groupsText, setGroupsText] = useState("Groups");
 
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState([]);
@@ -92,42 +96,55 @@ export default function App() {
   const proofreaderRef = useRef(null);
   const [languageSession, setLanguageSession] = useState(null);
 
+  // REPLACE BOTH of your initial useEffect hooks with THIS ONE
   useEffect(() => {
-    chrome.storage.local.get("autoGroupingEnabled", (data) => {
-      setEnabled(data.autoGroupingEnabled ?? true);
-    });
-  }, []);
+    chrome.storage.local.get(
+      [
+        "chatMessages",
+        "tabManagerTheme",
+        "autoGroupingEnabled",
+        "selectedLanguage", // Load the saved language
+      ],
+      (data) => {
+        // Load Chat Messages
+        if (data.chatMessages && Array.isArray(data.chatMessages)) {
+          setMessages(data.chatMessages);
+        } else {
+          setMessages([
+            {
+              text: "👋 Welcome to AI Tab Manager! Type 'help' to see what I can do.",
+              sender: "system",
+              timestamp: Date.now(),
+            },
+          ]);
+        }
 
-  useEffect(() => {
-    chrome.storage.local.get("chatMessages", (data) => {
-      if (data.chatMessages && Array.isArray(data.chatMessages)) {
-        setMessages(data.chatMessages);
-      } else {
-        setMessages([
-          {
-            text: "👋 Welcome to AI Tab Manager! Type 'help' to see what I can do.",
-            sender: "system",
-            timestamp: Date.now(),
-          },
-        ]);
+        // Load Theme
+        if (data.tabManagerTheme) {
+          setIsDark(data.tabManagerTheme === "dark");
+        }
+
+        // Load Toggle State (from your first hook)
+        setEnabled(data.autoGroupingEnabled ?? true);
+
+        // Load and apply saved language
+        const savedLanguage = data.selectedLanguage;
+        if (savedLanguage && savedLanguage.code !== "en") {
+          // If we have a saved, non-English language,
+          // set it and trigger the translation process.
+          setLanguage(savedLanguage);
+          onChangeLanguage(savedLanguage, true); // Pass 'true' to skip re-saving
+        }
+        // If language is English or not set, the defaults from useState() are used.
       }
-    });
+    );
 
+    // Call all your init functions
     initializeAI();
     initializeProofreaderAI();
     updateTabCount();
-
-    chrome.storage.local.get("tabManagerTheme", (data) => {
-      if (data.tabManagerTheme) {
-        setIsDark(data.tabManagerTheme === "dark");
-      }
-    });
-
     checkBackgroundAIStatus();
-    chrome.storage.local.get("autoGroupingEnabled", (data) => {
-      setEnabled(data.autoGroupingEnabled ?? true);
-    });
-  }, []);
+  }, []); // This should only run once on mount
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -141,14 +158,23 @@ export default function App() {
     if (prompt === "help") handleSend();
   }, [prompt]);
 
-  const onChangeLanguage = async (lang) => {
+  const onChangeLanguage = async (lang, skipSave = false) => {
+    // 1. Persist the new language choice (unless we're just loading)
+    if (!skipSave) {
+      chrome.storage.local.set({ selectedLanguage: lang });
+    }
+
+    // Get the previous language code for the translator source
     const prevLangCode = language?.code ?? "en";
 
+    // 2. Update React state
     setLanguage(lang);
 
+    // 3. Handle English case (no translation needed)
     if (lang.code === "en") {
       setLanguageSession(null);
 
+      // Reset all UI text to English defaults
       setTitle("AI TAB MANAGER");
       setActive("Auto-Active");
       setTabsText("Tabs Open");
@@ -156,9 +182,14 @@ export default function App() {
       setHelp("Help");
       setOrganise("Organise Now");
       setClear("Clear Chat");
+      setChatText("Chat");
+      setTabGroupText("Tab Groups");
+      setGroupText("Group");
+      setGroupsText("Groups");
       return;
     }
 
+    // 4. Initialize the AI translator
     const newLanguageSession = await initializeLanguageChangeAI(
       lang,
       prevLangCode
@@ -168,6 +199,7 @@ export default function App() {
     console.log("Previous Language Code (used as source):", prevLangCode);
     console.log("Language Session:", newLanguageSession);
 
+    // 5. Translate all UI text in parallel
     try {
       if (newLanguageSession) {
         const [
@@ -178,6 +210,10 @@ export default function App() {
           newHelp,
           newOrganise,
           newClear,
+          newChat,
+          newTabGroup,
+          newGroupText,
+          newGroupsText,
         ] = await Promise.all([
           newLanguageSession.translate("AI TAB MANAGER"),
           newLanguageSession.translate("Auto-Active"),
@@ -186,8 +222,13 @@ export default function App() {
           newLanguageSession.translate("Help"),
           newLanguageSession.translate("Organise Now"),
           newLanguageSession.translate("Clear Chat"),
+          newLanguageSession.translate("Chat"),
+          newLanguageSession.translate("Tab Groups"),
+          newLanguageSession.translate("Group"),
+          newLanguageSession.translate("Groups"),
         ]);
 
+        // 6. Apply all translated text at once
         setTitle(newTitle);
         setActive(newActive);
         setTabsText(newTabsText);
@@ -195,9 +236,15 @@ export default function App() {
         setHelp(newHelp);
         setOrganise(newOrganise);
         setClear(newClear);
+        setChatText(newChat);
+        setTabGroupText(newTabGroup);
+        setGroupText(newGroupText);
+        setGroupsText(newGroupsText);
       }
     } catch (error) {
       console.error("Language change failed:", error);
+      // If translation fails, you might want to fall back to English
+      // or just let the previous (or default) text remain.
     }
   };
 
@@ -1193,7 +1240,7 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
             isDark ? "text-white" : "text-slate-900"
           }`}
         >
-          Tab Groups
+          {tabGroupText}
         </h3>
         <span
           className={`text-xs font-medium px-3 py-1 rounded-full ${
@@ -1202,7 +1249,7 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
               : "bg-cyan-100 text-cyan-700"
           }`}
         >
-          {groups.length} {groups.length === 1 ? "group" : "groups"}
+          {groups.length} {groups.length === 1 ? groupText : groupsText}
         </span>
       </div>
 
@@ -1226,10 +1273,7 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
         ) : (
           <div className="space-y-3">
             {groups.map((group) => (
-              <div
-                key={group.id}
-                className="rounded-xl transition-all"
-              >
+              <div key={group.id} className="rounded-xl transition-all">
                 {renamingGroup === group.title ? (
                   <div className="flex gap-2">
                     <input
@@ -1237,8 +1281,7 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
                       value={newGroupName}
                       onChange={(e) => setNewGroupName(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter")
-                          handleRenameSubmit(group.title);
+                        if (e.key === "Enter") handleRenameSubmit(group.title);
                         if (e.key === "Escape") setRenamingGroup(null);
                       }}
                       className={`flex-1 px-3 py-1.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 ${
@@ -1301,7 +1344,11 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
                               isDark ? "text-white" : "text-slate-900"
                             }`}
                           >
-                            {group.title}
+                            <TranslatedText
+                              msg={{ text: group.title }}
+                              language={language}
+                              translatorSession={languageSession}
+                            />
                           </h4>
                           <span
                             className={`text-xs mt-1 px-2 py-0.5 rounded-md w-fit ${
@@ -1317,7 +1364,7 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
                       </div>
 
                       <div className="flex gap-1">
-                        <button
+                        <button 
                           onClick={() => handleRenameStart(group)}
                           className={`p-2 rounded-lg transition-all hover:scale-110 cursor-pointer ${
                             isDark
@@ -1359,10 +1406,7 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
 
         if (isUser) {
           return (
-            <div
-              key={i}
-              className="flex justify-end animate-slide-in-right"
-            >
+            <div key={i} className="flex justify-end animate-slide-in-right">
               <div
                 className={`max-w-[80%] px-4 py-2.5 rounded-2xl rounded-tr-lg shadow-lg text-sm leading-relaxed text-white
                   ${
@@ -1400,10 +1444,7 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
           );
         }
         return (
-          <div
-            key={i}
-            className="flex justify-start animate-slide-in-left"
-          >
+          <div key={i} className="flex justify-start animate-slide-in-left">
             <div
               className={`max-w-[90%] px-4 py-2.5 rounded-2xl rounded-tl-lg shadow-md text-sm leading-relaxed ${
                 isDark
@@ -1490,6 +1531,7 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
           <div className="flex items-center gap-2">
             <LanguageDropdown
               isDark={isDark}
+              value={language}
               onChange={(language) => {
                 onChangeLanguage(language);
               }}
@@ -1566,7 +1608,7 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
               disabled={loading}
               isDark={isDark}
               icon={BotMessageSquare}
-              text={"chat"}
+              text={chatText}
             />
           ) : (
             <Button

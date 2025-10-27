@@ -1,4 +1,4 @@
-// src/popup/App.jsx - OPTIMIZED VERSION
+// src/popup/App.jsx - REFINED UI VERSION 2 (Chat Area)
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
   aiReadyMessage,
@@ -1180,86 +1180,314 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
     chrome.storage.local.remove("chatMessages");
   };
 
-  return (
-    <div
-      className={`w-[500px] h-[600px] ${
-        isDark
-          ? "bg-gradient-to-br from-slate-900 via-gray-900 to-slate-900"
-          : "bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50"
-      } font-sans flex flex-col transition-all duration-500`}
-    >
+  // JSX for the Group Manager content
+  const groupManagerContent = (
+    <>
       <div
-        className={`sticky top-0 h-40 px-6 py-4 ${
-          isDark
-            ? "bg-gradient-to-tl from-gray-900/40 to-cyan-700/40 backdrop-blur-xl border-b border-white/10"
-            : "bg-white/60 backdrop-blur-xl border-b border-indigo-200/50"
+        className={`relative flex justify-between items-center pb-4 mb-4 ${
+          isDark ? "border-b border-slate-700/50" : "border-b border-gray-200"
         }`}
       >
-        <div className="relative flex items-center justify-between mb-4">
-          <div className="flex flex-col justify-between items-start ">
-            <div className="flex items-center justify-start w-[50vh] gap-4">
-              <div
-                className={`w-11 h-11 rounded-2xl flex items-center justify-center text-2xl shadow-lg transform hover:scale-105 transition-transform text-black bg-gradient-to-bl from-amber-400 via-yellow-500 to-orange-600
-                `}
-              >
-                <BotMessageSquare />
-              </div>
-              <h3
-                className={`text-lg font-bold tracking-tight ${
-                  isDark ? "text-white" : "text-slate-900"
-                }`}
-              >
-                {title}
-              </h3>
-            </div>
+        <h3
+          className={`text-lg uppercase font-bold tracking-tight ${
+            isDark ? "text-white" : "text-slate-900"
+          }`}
+        >
+          Tab Groups
+        </h3>
+        <span
+          className={`text-xs font-medium px-3 py-1 rounded-full ${
+            isDark
+              ? "bg-cyan-500/20 text-cyan-300"
+              : "bg-cyan-100 text-cyan-700"
+          }`}
+        >
+          {groups.length} {groups.length === 1 ? "group" : "groups"}
+        </span>
+      </div>
 
-            <div className="flex items-center ml-13 w-[40vh] gap-2 mt-0.5">
+      <div className="flex-1">
+        {groups.length === 0 ? (
+          <div className="flex flex-col gap-3 items-center justify-center h-full pt-16">
+            <Folder
+              className={` ${isDark ? "text-slate-700" : "text-gray-300"}`}
+              size={48}
+            />
+            <p
+              className={`text-center text-sm font-medium ${
+                isDark ? "text-slate-400" : "text-slate-500"
+              }`}
+            >
+              No groups yet.
+              <br />
+              Try 'Organise Now' or 'group all as Work'.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {groups.map((group) => (
               <div
-                className={`flex items-center justify-center gap-2 backdrop-blur-md px-4 py-1 rounded-xl
-                ${isDark ? "bg-transparent text-yell" : "bg-gray-200"}
-                    backdrop-blur-xl
-                `}
+                key={group.id}
+                className="rounded-xl transition-all"
               >
-                {aiStatus === "ready" ? (
-                  <span
-                    className={`${
-                      isDark ? "text-emerald-400" : "text-emerald-600"
-                    } font-bold`}
-                  >
-                    {active}
-                  </span>
+                {renamingGroup === group.title ? (
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newGroupName}
+                      onChange={(e) => setNewGroupName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter")
+                          handleRenameSubmit(group.title);
+                        if (e.key === "Escape") setRenamingGroup(null);
+                      }}
+                      className={`flex-1 px-3 py-1.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 ${
+                        isDark
+                          ? "bg-slate-700 border border-slate-600 text-white "
+                          : "bg-white border border-slate-300 text-slate-900"
+                      }`}
+                      autoFocus
+                    />
+                    <button
+                      onClick={() => handleRenameSubmit(group.title)}
+                      className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-lime-500 to-green-500 text-white text-sm font-semibold hover:shadow-lg transition-all hover:bg-lime-200 cursor-pointer"
+                    >
+                      ✓
+                    </button>
+                    <button
+                      onClick={() => setRenamingGroup(null)}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
+                        isDark
+                          ? "bg-slate-700 text-white hover:bg-slate-600"
+                          : "bg-slate-200 text-slate-700 hover:bg-slate-300"
+                      }`}
+                    >
+                      ✕
+                    </button>
+                  </div>
                 ) : (
-                  <span
-                    className={`${
-                      isDark ? "text-slate-400" : "text-black"
-                    } font-bold`}
-                  >
-                    {aiStatus}
-                  </span>
+                  <>
+                    <div
+                      className={`flex justify-between items-center p-3.5 rounded-xl border transition-all ${
+                        isDark
+                          ? "bg-slate-800 border-slate-700/50 hover:bg-slate-700/60"
+                          : "bg-gray-50 border-gray-200 hover:bg-gray-100"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`w-3 h-3 rounded-full ${
+                            group.color === "blue"
+                              ? "bg-blue-500"
+                              : group.color === "red"
+                              ? "bg-red-500"
+                              : group.color === "yellow"
+                              ? "bg-yellow-500"
+                              : group.color === "green"
+                              ? "bg-green-500"
+                              : group.color === "pink"
+                              ? "bg-pink-500"
+                              : group.color === "purple"
+                              ? "bg-purple-500"
+                              : group.color === "cyan"
+                              ? "bg-cyan-500"
+                              : "bg-orange-500"
+                          }`}
+                        ></div>
+
+                        <div className="flex flex-col">
+                          <h4
+                            className={`font-semibold text-base leading-tight ${
+                              isDark ? "text-white" : "text-slate-900"
+                            }`}
+                          >
+                            {group.title}
+                          </h4>
+                          <span
+                            className={`text-xs mt-1 px-2 py-0.5 rounded-md w-fit ${
+                              isDark
+                                ? "bg-slate-700 text-slate-300"
+                                : "bg-slate-100 text-slate-600"
+                            }`}
+                          >
+                            {group.tabCount}{" "}
+                            {group.tabCount === 1 ? "tab" : "tabs"}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => handleRenameStart(group)}
+                          className={`p-2 rounded-lg transition-all hover:scale-110 cursor-pointer ${
+                            isDark
+                              ? "text-slate-400 hover:bg-slate-700 hover:text-green-400"
+                              : "text-slate-500 hover:bg-gray-200 hover:text-green-600"
+                          }`}
+                        >
+                          <Pencil size={16} />
+                        </button>
+
+                        <button
+                          onClick={() => handleUngroup(group.title)}
+                          className={`p-2 rounded-lg transition-all hover:scale-110 cursor-pointer ${
+                            isDark
+                              ? "text-slate-400 hover:bg-slate-700 hover:text-orange-400"
+                              : "text-slate-500 hover:bg-gray-200 hover:text-orange-600"
+                          }`}
+                        >
+                          <Ungroup size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  </>
                 )}
               </div>
-              <span
-                className={`text-xs font-bold px-4 py-1 rounded-xl not-first:  
-                    ${
-                      isDark
-                        ? "bg-transparent text-yellow-500"
-                        : "bg-gray-200 text-red-400"
-                    }
-                    backdrop-blur-xl
-                    `}
+            ))}
+          </div>
+        )}
+      </div>
+    </>
+  );
+
+  // JSX for the Chat Messages content
+  const chatMessagesContent = (
+    <div className="flex flex-col gap-3.5">
+      {messages.map((msg, i) => {
+        const isUser = msg.sender === "user";
+        const isSystem = msg.sender === "system";
+
+        if (isUser) {
+          return (
+            <div
+              key={i}
+              className="flex justify-end animate-slide-in-right"
+            >
+              <div
+                className={`max-w-[80%] px-4 py-2.5 rounded-2xl rounded-tr-lg shadow-lg text-sm leading-relaxed text-white
+                  ${
+                    isDark
+                      ? "bg-gradient-to-br from-cyan-600 to-indigo-700"
+                      : "bg-gradient-to-br from-cyan-500 to-indigo-600"
+                  }
+                  `}
+                style={{ wordWrap: "break-word" }}
               >
-                {tabCount} {tabsText}
-              </span>
+                {
+                  <TranslatedText
+                    msg={msg}
+                    language={language}
+                    translatorSession={languageSession}
+                  />
+                }
+              </div>
+            </div>
+          );
+        }
+        if (isSystem) {
+          return (
+            <div key={i} className="flex justify-center animate-fade-in">
+              <div
+                className={`px-3 py-1.5 rounded-full text-xs font-medium ${
+                  isDark
+                    ? "bg-slate-800 text-slate-500 border border-slate-700/50"
+                    : "bg-gray-100 text-slate-500 border border-gray-200"
+                }`}
+              >
+                {msg.text}
+              </div>
+            </div>
+          );
+        }
+        return (
+          <div
+            key={i}
+            className="flex justify-start animate-slide-in-left"
+          >
+            <div
+              className={`max-w-[90%] px-4 py-2.5 rounded-2xl rounded-tl-lg shadow-md text-sm leading-relaxed ${
+                isDark
+                  ? "bg-slate-800 text-slate-100"
+                  : "bg-gray-100 text-slate-800"
+              }`}
+              style={{
+                wordWrap: "break-word",
+                whiteSpace: "preserve-breaks",
+              }}
+            >
+              {
+                <TranslatedText
+                  msg={msg}
+                  language={language}
+                  translatorSession={languageSession}
+                />
+              }
             </div>
           </div>
+        );
+      })}
 
-          <div className="w-72 flex items-center gap-3">
-            <ToggleButton
-              enabled={enabled}
-              onChange={toggleFeature}
-              isDark={isDark}
-            />
+      {loading && (
+        <div className="flex justify-start animate-pulse">
+          <div
+            className={`px-4 py-2.5 rounded-2xl rounded-tl-lg flex items-center gap-2 text-sm ${
+              isDark
+                ? "bg-slate-800 text-slate-300"
+                : "bg-gray-100 text-slate-600"
+            }`}
+          >
+            <div className="flex gap-1">
+              <div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce"></div>
+              <div
+                className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce"
+                style={{ animationDelay: "0.1s" }}
+              ></div>
+              <div
+                className="w-2 h-2 bg-cyan-500 rounded-full animate-bounce"
+                style={{ animationDelay: "0.2s" }}
+              ></div>
+            </div>
+            <span>Thinking...</span>
+          </div>
+        </div>
+      )}
 
+      <div ref={chatEndRef} />
+    </div>
+  );
+
+  return (
+    <div
+      className={`w-[500px] h-[600px] font-sans flex flex-col transition-all duration-300 ${
+        isDark ? "bg-slate-950 text-slate-100" : "bg-gray-100 text-slate-900"
+      }`}
+    >
+      {/* --- HEADER --- */}
+      <div
+        className={`sticky top-0 px-5 py-4 z-10 ${
+          isDark
+            ? "bg-slate-900/80 border-b border-slate-700/50"
+            : "bg-white/80 border-b border-gray-200/70"
+        } backdrop-blur-lg`}
+      >
+        {/* Row 1: Title & Controls */}
+        <div className="relative flex items-center justify-between mb-3">
+          <div className="flex items-center gap-3">
+            <div
+              className={`w-10 h-10 rounded-xl flex items-center justify-center text-2xl shadow-lg transform hover:scale-105 transition-transform text-white bg-gradient-to-br from-cyan-500 to-indigo-600`}
+            >
+              <BotMessageSquare size={24} />
+            </div>
+            <h3
+              className={`text-lg font-bold tracking-tight ${
+                isDark ? "text-white" : "text-slate-900"
+              }`}
+            >
+              {title}
+            </h3>
+          </div>
+
+          <div className="flex items-center gap-2">
             <LanguageDropdown
               isDark={isDark}
               onChange={(language) => {
@@ -1268,16 +1496,69 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
             />
             <button
               onClick={() => setIsDark(!isDark)}
-              className={`p-2 rounded-xl transition-all hover:scale-110 cursor-pointer ${
-                isDark ? "text-yellow-300" : "text-slate-700"
+              className={`p-2 rounded-lg transition-all hover:scale-110 cursor-pointer ${
+                isDark
+                  ? "text-yellow-300 hover:bg-slate-800"
+                  : "text-slate-600 hover:bg-gray-200"
               }`}
               title="Toggle theme"
             >
-              {isDark ? <Sun /> : <Moon />}
+              {isDark ? <Sun size={18} /> : <Moon size={18} />}
             </button>
           </div>
         </div>
 
+        {/* Row 2: Status & Toggles */}
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <div className="flex items-center gap-2">
+            <div
+              className={`flex items-center justify-center gap-1.5 backdrop-blur-md px-3 py-1 rounded-full text-xs font-medium
+                ${
+                  isDark
+                    ? "bg-slate-800 border border-slate-700/50"
+                    : "bg-gray-200 border border-gray-300/50"
+                }
+              `}
+            >
+              {aiStatus === "ready" ? (
+                <>
+                  <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></span>
+                  <span
+                    className={`${
+                      isDark ? "text-emerald-400" : "text-emerald-600"
+                    }`}
+                  >
+                    {active}
+                  </span>
+                </>
+              ) : (
+                <span
+                  className={`${isDark ? "text-slate-400" : "text-slate-600"}`}
+                >
+                  {aiStatus}
+                </span>
+              )}
+            </div>
+            <span
+              className={`text-xs font-medium px-3 py-1 rounded-full
+                ${
+                  isDark
+                    ? "bg-slate-800 border border-slate-700/50 text-cyan-300"
+                    : "bg-gray-200 border border-gray-300/50 text-cyan-700"
+                }
+              `}
+            >
+              {tabCount} {tabsText}
+            </span>
+          </div>
+          <ToggleButton
+            enabled={enabled}
+            onChange={toggleFeature}
+            isDark={isDark}
+          />
+        </div>
+
+        {/* Row 3: Action Buttons */}
         <div className="relative flex gap-2">
           {showGroupManager ? (
             <Button
@@ -1330,327 +1611,55 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
         </div>
       </div>
 
-      {showGroupManager ? (
+      {/* --- MAIN CONTENT AREA (CHAT OR GROUPS) --- */}
+      <div
+        className={`flex-1 overflow-y-auto px-5 py-4 ${
+          isDark ? "bg-slate-900" : "bg-white"
+        }`}
+      >
+        {showGroupManager ? groupManagerContent : chatMessagesContent}
+      </div>
+
+      {/* --- CHAT INPUT BAR (Conditional) --- */}
+      {!showGroupManager && (
         <div
-          className={`w-[500px] h-[600px] overflow-x-hidden ${
+          className={`px-5 py-3 ${
             isDark
-              ? "bg-gradient-to-br from-gray-900 via-cyan-900 to-black"
-              : "bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50"
-          } font-sans flex flex-col transition-all duration-500`}
+              ? "bg-slate-900/80 border-t border-slate-700/50"
+              : "bg-white/80 border-t border-gray-200/70"
+          } backdrop-blur-lg`}
         >
-          <div
-            className={`relative flex justify-between items-center px-6 py-4 border-b border-slate-300/20 `}
-          >
-            <h3
-              className={`text-xl uppercase font-bold tracking-tight ${
-                isDark ? "text-white" : "text-slate-900"
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && !loading && handleSend()}
+              placeholder="Search tabs, open sites, or organize..."
+              disabled={loading}
+              className={`flex-1 px-4 py-3 rounded-xl text-sm transition-all outline-none focus:ring-2 focus:ring-cyan-500 ${
+                isDark
+                  ? "bg-slate-800 border border-slate-700 text-white placeholder-slate-400 "
+                  : "bg-white border border-slate-300 text-slate-900 placeholder-slate-400 "
+              } ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
+            />
+            <button
+              onClick={handleSend}
+              disabled={loading || !prompt.trim()}
+              className={`px-4 py-3 rounded-xl font-semibold transition-all flex items-center justify-center ${
+                loading || !prompt.trim()
+                  ? "bg-slate-400/30 text-slate-500 cursor-not-allowed"
+                  : "bg-gradient-to-r from-green-500 to-green-600 cursor-pointer text-white hover:shadow-lg hover:scale-105"
               }`}
+              title="Send message"
             >
-              Tab Groups
-            </h3>
-            <span
-              className={`text-xs font-medium backdrop-blur-2xl bg-yellow-500 animate-pulse text-white px-4 py-1 rounded-xl `}
-            >
-              {groups.length > 1
-                ? `${groups.length} groups`
-                : `${groups.length} group`}
-            </span>
-          </div>
-
-          <div
-            className={`flex-1 overflow-y-auto px-6 py-5 ${
-              isDark ? "" : "bg-white/30"
-            }`}
-          >
-            {groups.length === 0 ? (
-              <div className="flex flex-col gap-2 items-center justify-center h-full">
-                <Folder
-                  className={` ${isDark ? "text-white" : "text-black"}`}
-                />
-                <p
-                  className={`text-center text-lg font-bold mono ${
-                    isDark ? "text-slate-300" : "text-slate-600"
-                  }`}
-                >
-                  No groups yet. Create some!
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {groups.map((group) => (
-                  <div
-                    key={group.id}
-                    className="rounded-xl transition-all hover:scale-[1.02]"
-                  >
-                    {renamingGroup === group.title ? (
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={newGroupName}
-                          onChange={(e) => setNewGroupName(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter")
-                              handleRenameSubmit(group.title);
-                            if (e.key === "Escape") setRenamingGroup(null);
-                          }}
-                          className={`flex-1 px-3 py-1.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 ${
-                            isDark
-                              ? "bg-slate-700 border border-slate-600 text-white "
-                              : "bg-white border border-slate-300 text-slate-900"
-                          }`}
-                          autoFocus
-                        />
-                        <button
-                          onClick={() => handleRenameSubmit(group.title)}
-                          className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-lime-500 to-green-500 text-white text-sm font-semibold hover:shadow-lg transition-all hover:bg-lime-200 cursor-pointer"
-                        >
-                          ✓
-                        </button>
-                        <button
-                          onClick={() => setRenamingGroup(null)}
-                          className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
-                            isDark
-                              ? "bg-slate-700 text-white hover:bg-slate-600"
-                              : "bg-slate-200 text-slate-700 hover:bg-slate-300"
-                          }`}
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        <div
-                          className={`flex justify-between items-center p-4 rounded-2xl shadow-sm border transition-all ${
-                            isDark
-                              ? "bg-slate-800 border-slate-700 hover:border-slate-600"
-                              : "bg-white border-slate-200 hover:border-slate-300"
-                          }`}
-                        >
-                          <div className="flex items-start gap-3">
-                            <div
-                              className={`w-3 h-3 mt-1 rounded-full ${
-                                group.color === "blue"
-                                  ? "bg-blue-500"
-                                  : group.color === "red"
-                                  ? "bg-red-500"
-                                  : group.color === "yellow"
-                                  ? "bg-yellow-500"
-                                  : group.color === "green"
-                                  ? "bg-green-500"
-                                  : group.color === "pink"
-                                  ? "bg-pink-500"
-                                  : group.color === "purple"
-                                  ? "bg-purple-500"
-                                  : group.color === "cyan"
-                                  ? "bg-cyan-500"
-                                  : "bg-orange-500"
-                              }`}
-                            ></div>
-
-                            <div className="flex flex-col">
-                              <h4
-                                className={`font-semibold text-base leading-tight ${
-                                  isDark ? "text-white" : "text-slate-900"
-                                }`}
-                              >
-                                {group.title}
-                              </h4>
-                              <span
-                                className={`text-xs mt-1 px-2 py-0.5 rounded-md w-fit ${
-                                  isDark
-                                    ? "bg-slate-700 text-slate-300"
-                                    : "bg-slate-100 text-slate-600"
-                                }`}
-                              >
-                                {group.tabCount}{" "}
-                                {group.tabCount === 1 ? "tab" : "tabs"}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => handleRenameStart(group)}
-                              className={`p-2 rounded-lg transition-all hover:scale-110 cursor-pointer ${
-                                isDark
-                                  ? "bg-green-600/80 hover:bg-green-600 text-white"
-                                  : "bg-green-500 hover:bg-green-600 text-white"
-                              }`}
-                            >
-                              <Pencil size={16} />
-                            </button>
-
-                            <button
-                              onClick={() => handleUngroup(group.title)}
-                              className={`p-2 rounded-lg transition-all hover:scale-110 cursor-pointer ${
-                                isDark
-                                  ? "bg-orange-600/80 hover:bg-orange-600 text-white"
-                                  : "bg-orange-500 hover:bg-orange-600 text-white"
-                              }`}
-                            >
-                              <Ungroup size={16} />
-                            </button>
-                          </div>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
+              <SendHorizontal size={18} />
+            </button>
           </div>
         </div>
-      ) : (
-        <>
-          <div
-            className={`flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-3 ${
-              isDark
-                ? "bg-gradient-to-br from-gray-900 via-cyan-900 to-black"
-                : "bg-white/30"
-            }`}
-          >
-            {messages.map((msg, i) => {
-              const isUser = msg.sender === "user";
-              const isSystem = msg.sender === "system";
-
-              if (isUser) {
-                return (
-                  <div
-                    key={i}
-                    className="flex justify-end animate-slide-in-right"
-                  >
-                    <div
-                      className={`max-w-[15rem] px-4 py-2.5 rounded-2xl rounded-tr-md shadow-lg text-sm leading-relaxed font-semibold
-                        ${
-                          isDark
-                            ? "bg-gradient-to-bl from-green-600 to-cyan-800 text-white border border-purple-500/30"
-                            : "bg-gradient-to-bl from-white to-cyan-100 text-slate-900 border border-indigo-200"
-                        }
-                        `}
-                      style={{ wordWrap: "break-word" }}
-                    >
-                      {
-                        <TranslatedText
-                          msg={msg}
-                          language={language}
-                          translatorSession={languageSession}
-                        />
-                      }
-                    </div>
-                  </div>
-                );
-              }
-              if (isSystem) {
-                return (
-                  <div key={i} className="flex justify-center animate-fade-in">
-                    <div
-                      className={`px-4 py-2 rounded-full text-xs font-medium ${
-                        isDark
-                          ? "bg-indigo-500/20 text-indigo-200 border border-indigo-500/30"
-                          : "bg-indigo-100 text-indigo-700 border border-indigo-200"
-                      }`}
-                    >
-                      {msg.text}
-                    </div>
-                  </div>
-                );
-              }
-              return (
-                <div
-                  key={i}
-                  className="flex justify-start animate-slide-in-left"
-                >
-                  <div
-                    className={`max-w-[90%] px-4 py-2 rounded-2xl rounded-tl-md shadow-md text-sm ${
-                      isDark
-                        ? "bg-slate-800/80 text-slate-100 border border-slate-700/50"
-                        : "bg-white text-slate-800 border border-slate-200"
-                    }`}
-                    style={{
-                      wordWrap: "break-word",
-                      whiteSpace: "preserve-breaks",
-                    }}
-                  >
-                    {
-                      <TranslatedText
-                        msg={msg}
-                        language={language}
-                        translatorSession={languageSession}
-                      />
-                    }
-                  </div>
-                </div>
-              );
-            })}
-
-            {loading && (
-              <div className="flex justify-start animate-pulse">
-                <div
-                  className={`px-4 py-2.5 rounded-2xl rounded-tl-md flex items-center gap-2 text-sm ${
-                    isDark
-                      ? "bg-slate-800/80 text-slate-300 border border-slate-700/50"
-                      : "bg-white text-slate-600 border border-slate-200"
-                  }`}
-                >
-                  <div className="flex gap-1">
-                    <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce"></div>
-                    <div
-                      className="w-2 h-2 bg-indigo-500 rounded-full animate-bounce"
-                      style={{ animationDelay: "0.1s" }}
-                    ></div>
-                    <div
-                      className="w-2 h-2 bg-pink-500 rounded-full animate-bounce"
-                      style={{ animationDelay: "0.2s" }}
-                    ></div>
-                  </div>
-                  <span>Thinking...</span>
-                </div>
-              </div>
-            )}
-
-            <div ref={chatEndRef} />
-          </div>
-
-          <div
-            className={`px-6 py-4 ${
-              isDark
-                ? "bg-gradient-to-tl from-gray-900/40 to-cyan-700/40 backdrop-blur-xl border-b border-white/10"
-                : "bg-white/60 backdrop-blur-xl border-t border-indigo-200/50"
-            }`}
-          >
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && !loading && handleSend()}
-                placeholder="Search tabs, open sites, or organize..."
-                disabled={loading}
-                className={`flex-1 px-4 py-3 rounded-xl text-sm transition-all outline-none focus:ring-2 focus:ring-cyan-500 ${
-                  isDark
-                    ? "bg-slate-800/50 border border-slate-700 text-white placeholder-slate-400 "
-                    : "bg-white border border-slate-300 text-slate-900 placeholder-slate-400 "
-                } ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
-              />
-              <button
-                onClick={handleSend}
-                disabled={loading || !prompt.trim()}
-                className={`px-5 py-3 rounded-xl font-semibold transition-all  ${
-                  loading || !prompt.trim()
-                    ? "bg-slate-400/30 text-slate-500 cursor-not-allowed"
-                    : "bg-gradient-to-r from-green-500 to-green-600 cursor-pointer text-white hover:shadow-lg hover:scale-105"
-                }`}
-                title="Send message"
-              >
-                <span className="text-lg">
-                  <SendHorizontal />
-                </span>
-              </button>
-            </div>
-          </div>
-        </>
       )}
 
+      {/* --- GLOBAL STYLES --- */}
       <style>{`
         @keyframes slide-in-right {
           from {
@@ -1700,13 +1709,13 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
         }
         .overflow-y-auto::-webkit-scrollbar-thumb {
           background: ${
-            isDark ? "rgba(139, 92, 246, 0.3)" : "rgba(99, 102, 241, 0.3)"
+            isDark ? "rgba(100, 116, 139, 0.3)" : "rgba(148, 163, 184, 0.4)"
           };
           border-radius: 10px;
         }
         .overflow-y-auto::-webkit-scrollbar-thumb:hover {
           background: ${
-            isDark ? "rgba(139, 92, 246, 0.5)" : "rgba(99, 102, 241, 0.5)"
+            isDark ? "rgba(100, 116, 139, 0.5)" : "rgba(148, 163, 184, 0.6)"
           };
         }
       `}</style>

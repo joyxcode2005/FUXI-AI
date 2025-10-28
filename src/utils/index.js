@@ -212,7 +212,7 @@ User: "org"
 Assistant: "organize"
 
 User: "open git"
-Assistant: "open github profile"
+Assistant: "open github account"
 
 User: "group all"
 Assistant: "group all as "

@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
   aiUnavailableMessage,
+  expandGroupAndFocusFirstTab,
   getAllGroups,
   groupExistingTabs,
   helpMessage,
@@ -1023,6 +1024,20 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
     setNewGroupName("");
   };
 
+  const handleGroupClick = async (groupId) => {
+    if (!groupId) return;
+
+    // We don't need to set global loading, as this should be fast
+    console.log(`Expanding and focusing group ${groupId}`);
+    const result = await expandGroupAndFocusFirstTab(groupId);
+
+    if (!result.success) {
+      console.error("Failed to expand group:", result.error);
+      // Optional: You could add a system message here if it fails
+      // addMessage(`❌ Failed to focus group: ${result.error}`, "system");
+    }
+  };
+
   const handleSend = async () => {
     let text = prompt.trim();
     if (!text || loading) return;
@@ -1360,13 +1375,15 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
                 ) : (
                   <>
                     <div
-                      className={`flex justify-between items-center p-3.5 rounded-xl border transition-all ${
+                      onClick={() => handleGroupClick(group.id)}
+                      title={`Switch to group: ${group.title}`}
+                      className={`flex justify-between items-center p-3.5 rounded-xl border transition-all cursor-pointer ${
                         isDark
                           ? "bg-slate-800 border-slate-700/50 hover:bg-slate-700/60"
                           : "bg-gray-50 border-gray-200 hover:bg-gray-100"
                       }`}
                     >
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 cursor-pointer">
                         <div
                           className={`w-3 h-3 rounded-full ${
                             group.color === "blue"

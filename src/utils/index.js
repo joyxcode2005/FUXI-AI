@@ -210,140 +210,183 @@ export const aiUnavailableMessage = `ℹ️ AI unavailable. Manual commands stil
 
 export async function getAllGroups() {
   try {
-      const groups = await chrome.tabGroups.query({});
-      const groupsWithTabs = await Promise.all(
-        groups.map(async (g) => {
-           if (!g || typeof g.id === 'undefined') return null;
-          try {
-              const tabs = await chrome.tabs.query({ groupId: g.id });
-              return {
-                id: g.id,
-                title: g.title || "Untitled Group",
-                color: g.color || "grey",
-                tabCount: tabs.length,
-              };
-          } catch { return null; }
-        })
-      );
-      return groupsWithTabs.filter(g => g !== null).sort((a, b) => a.title.localeCompare(b.title));
-   } catch (error) {
-       console.error("Error in getAllGroups:", error);
-       return [];
-   }
+    const groups = await chrome.tabGroups.query({});
+    const groupsWithTabs = await Promise.all(
+      groups.map(async (g) => {
+        if (!g || typeof g.id === "undefined") return null;
+        try {
+          const tabs = await chrome.tabs.query({ groupId: g.id });
+          return {
+            id: g.id,
+            title: g.title || "Untitled Group",
+            color: g.color || "grey",
+            tabCount: tabs.length,
+          };
+        } catch {
+          return null;
+        }
+      })
+    );
+    return groupsWithTabs
+      .filter((g) => g !== null)
+      .sort((a, b) => a.title.localeCompare(b.title));
+  } catch (error) {
+    console.error("Error in getAllGroups:", error);
+    return [];
+  }
 }
 
 export async function getExistingGroupsWithTabs() {
   try {
-      const groups = await chrome.tabGroups.query({});
-      const groupsWithTabs = await Promise.all(
-        groups.map(async (g) => {
-          if (!g || typeof g.id === 'undefined') return null;
-           try {
-              const tabs = await chrome.tabs.query({ groupId: g.id });
-              return {
-                id: g.id,
-                title: g.title || "Untitled Group",
-                color: g.color || "grey",
-                tabIds: tabs.map(t => t.id),
-                tabs: tabs.map(t => ({
-                  id: t.id,
-                  title: t.title || "Untitled Tab",
-                  url: t.url || ""
-                }))
-              };
-           } catch { return null; }
-        })
-      );
-      return groupsWithTabs.filter(g => g !== null);
+    const groups = await chrome.tabGroups.query({});
+    const groupsWithTabs = await Promise.all(
+      groups.map(async (g) => {
+        if (!g || typeof g.id === "undefined") return null;
+        try {
+          const tabs = await chrome.tabs.query({ groupId: g.id });
+          return {
+            id: g.id,
+            title: g.title || "Untitled Group",
+            color: g.color || "grey",
+            tabIds: tabs.map((t) => t.id),
+            tabs: tabs.map((t) => ({
+              id: t.id,
+              title: t.title || "Untitled Tab",
+              url: t.url || "",
+            })),
+          };
+        } catch {
+          return null;
+        }
+      })
+    );
+    return groupsWithTabs.filter((g) => g !== null);
   } catch (error) {
-       console.error("Error in getExistingGroupsWithTabs:", error);
-       return [];
-   }
+    console.error("Error in getExistingGroupsWithTabs:", error);
+    return [];
+  }
 }
 
 export async function ungroupTabs(title) {
-   if (!title || typeof title !== 'string') return { success: false, error: "Invalid group title provided." };
+  if (!title || typeof title !== "string")
+    return { success: false, error: "Invalid group title provided." };
   try {
-      const groups = await chrome.tabGroups.query({ title: title });
-      const targetGroup = groups.find(g => g.title.toLowerCase() === title.toLowerCase());
+    const groups = await chrome.tabGroups.query({ title: title });
+    const targetGroup = groups.find(
+      (g) => g.title.toLowerCase() === title.toLowerCase()
+    );
 
-      if (targetGroup) {
-        const tabs = await chrome.tabs.query({ groupId: targetGroup.id });
-        if (tabs.length > 0) {
-            await chrome.tabs.ungroup(tabs.map((t) => t.id));
-            return { success: true, count: tabs.length };
-        } else {
-             return { success: true, count: 0, message: "Group was empty." };
-        }
+    if (targetGroup) {
+      const tabs = await chrome.tabs.query({ groupId: targetGroup.id });
+      if (tabs.length > 0) {
+        await chrome.tabs.ungroup(tabs.map((t) => t.id));
+        return { success: true, count: tabs.length };
+      } else {
+        return { success: true, count: 0, message: "Group was empty." };
       }
-      return { success: false, error: `Group "${title}" not found.` };
-   } catch (error) {
-        console.error(`Error ungrouping "${title}":`, error);
-        return { success: false, error: error.message || "An unexpected error occurred." };
-   }
+    }
+    return { success: false, error: `Group "${title}" not found.` };
+  } catch (error) {
+    console.error(`Error ungrouping "${title}":`, error);
+    return {
+      success: false,
+      error: error.message || "An unexpected error occurred.",
+    };
+  }
 }
 
 export async function renameGroup(oldTitle, newTitle) {
-    if (!oldTitle || !newTitle || typeof oldTitle !== 'string' || typeof newTitle !== 'string') {
-        return { success: false, error: "Invalid titles provided." };
-    }
-    const trimmedNewTitle = newTitle.trim();
-     if (!trimmedNewTitle) return { success: false, error: "New group name cannot be empty." };
+  if (
+    !oldTitle ||
+    !newTitle ||
+    typeof oldTitle !== "string" ||
+    typeof newTitle !== "string"
+  ) {
+    return { success: false, error: "Invalid titles provided." };
+  }
+  const trimmedNewTitle = newTitle.trim();
+  if (!trimmedNewTitle)
+    return { success: false, error: "New group name cannot be empty." };
 
   try {
-      const groups = await chrome.tabGroups.query({ title: oldTitle });
-      const targetGroup = groups.find(g => g.title.toLowerCase() === oldTitle.toLowerCase());
+    const groups = await chrome.tabGroups.query({ title: oldTitle });
+    const targetGroup = groups.find(
+      (g) => g.title.toLowerCase() === oldTitle.toLowerCase()
+    );
 
-      if (targetGroup) {
-        await chrome.tabGroups.update(targetGroup.id, { title: trimmedNewTitle });
-        return { success: true };
-      }
-      return { success: false, error: `Group "${oldTitle}" not found.` };
-   } catch (error) {
-       console.error(`Error renaming "${oldTitle}" to "${trimmedNewTitle}":`, error);
-       return { success: false, error: error.message || "An unexpected error occurred." };
-   }
+    if (targetGroup) {
+      await chrome.tabGroups.update(targetGroup.id, { title: trimmedNewTitle });
+      return { success: true };
+    }
+    return { success: false, error: `Group "${oldTitle}" not found.` };
+  } catch (error) {
+    console.error(
+      `Error renaming "${oldTitle}" to "${trimmedNewTitle}":`,
+      error
+    );
+    return {
+      success: false,
+      error: error.message || "An unexpected error occurred.",
+    };
+  }
 }
 
 export async function groupExistingTabs(title, color = "grey") {
-    const trimmedTitle = title.trim();
-    if (!trimmedTitle) return { success: false, error: "Group title cannot be empty." };
+  const trimmedTitle = title.trim();
+  if (!trimmedTitle)
+    return { success: false, error: "Group title cannot be empty." };
 
   try {
-      const tabs = await chrome.tabs.query({ windowType: "normal", groupId: chrome.tabGroups.TAB_GROUP_ID_NONE });
-      const groupableTabs = tabs.filter((tab) => {
-        const url = tab.url || "";
-        return ( tab.id &&
-          !url.startsWith("chrome://") &&
-          !url.startsWith("chrome-extension://") &&
-          !url.startsWith("edge://") &&
-          !url.startsWith("about:")
-        );
+    const tabs = await chrome.tabs.query({
+      windowType: "normal",
+      groupId: chrome.tabGroups.TAB_GROUP_ID_NONE,
+    });
+    const groupableTabs = tabs.filter((tab) => {
+      const url = tab.url || "";
+      return (
+        tab.id &&
+        !url.startsWith("chrome://") &&
+        !url.startsWith("chrome-extension://") &&
+        !url.startsWith("edge://") &&
+        !url.startsWith("about:")
+      );
+    });
+
+    if (groupableTabs.length === 0) {
+      return { success: false, error: "No ungroupable tabs found." };
+    }
+
+    const tabIds = groupableTabs.map((t) => t.id);
+
+    const existingGroups = await chrome.tabGroups.query({
+      title: trimmedTitle,
+    });
+    let groupId;
+    if (existingGroups.length > 0) {
+      groupId = existingGroups[0].id;
+      await chrome.tabs.group({ groupId: groupId, tabIds });
+      console.log(
+        `Added ${tabIds.length} tabs to existing group "${trimmedTitle}"`
+      );
+    } else {
+      groupId = await chrome.tabs.group({ tabIds });
+      await chrome.tabGroups.update(groupId, {
+        title: trimmedTitle,
+        color: color,
       });
+      console.log(
+        `Created new group "${trimmedTitle}" with ${tabIds.length} tabs`
+      );
+    }
 
-      if (groupableTabs.length === 0) {
-        return { success: false, error: "No ungroupable tabs found." };
-      }
-
-      const tabIds = groupableTabs.map((t) => t.id);
-
-       const existingGroups = await chrome.tabGroups.query({ title: trimmedTitle });
-       let groupId;
-       if (existingGroups.length > 0) {
-           groupId = existingGroups[0].id;
-           await chrome.tabs.group({ groupId: groupId, tabIds });
-            console.log(`Added ${tabIds.length} tabs to existing group "${trimmedTitle}"`);
-       } else {
-           groupId = await chrome.tabs.group({ tabIds });
-           await chrome.tabGroups.update(groupId, { title: trimmedTitle, color: color });
-           console.log(`Created new group "${trimmedTitle}" with ${tabIds.length} tabs`);
-       }
-
-      return { success: true, count: tabIds.length, groupId: groupId };
-   } catch (error) {
-       console.error(`Error grouping tabs as "${trimmedTitle}":`, error);
-       return { success: false, error: error.message || "An unexpected error occurred." };
-   }
+    return { success: true, count: tabIds.length, groupId: groupId };
+  } catch (error) {
+    console.error(`Error grouping tabs as "${trimmedTitle}":`, error);
+    return {
+      success: false,
+      error: error.message || "An unexpected error occurred.",
+    };
+  }
 }
 
 // Validation helper
@@ -351,89 +394,142 @@ async function validateTabIdsForGrouping(tabIds) {
   if (!Array.isArray(tabIds)) return [];
   const validIds = [];
   for (const tabId of tabIds) {
-      const numId = Number(tabId);
-      if (isNaN(numId)) continue;
-      try {
-          const tab = await chrome.tabs.get(numId);
-          if (tab && tab.windowType === 'normal' && tab.groupId === chrome.tabGroups.TAB_GROUP_ID_NONE) {
-              validIds.push(numId);
-          }
-      } catch { }
+    const numId = Number(tabId);
+    if (isNaN(numId)) continue;
+    try {
+      const tab = await chrome.tabs.get(numId);
+      if (
+        tab &&
+        tab.windowType === "normal" &&
+        tab.groupId === chrome.tabGroups.TAB_GROUP_ID_NONE
+      ) {
+        validIds.push(numId);
+      }
+    } catch {}
   }
   return validIds;
 }
 
 export async function createMultipleGroups(groupedTabs) {
-   if (!groupedTabs || typeof groupedTabs !== 'object' || Object.keys(groupedTabs).length === 0) {
-       return { success: false, error: "No group data provided.", groupsCreated: 0, tabsAddedToExisting: 0 };
-   }
+  if (
+    !groupedTabs ||
+    typeof groupedTabs !== "object" ||
+    Object.keys(groupedTabs).length === 0
+  ) {
+    return {
+      success: false,
+      error: "No group data provided.",
+      groupsCreated: 0,
+      tabsAddedToExisting: 0,
+    };
+  }
   let groupsCreatedCount = 0;
   let tabsAddedCount = 0;
-  const colors = ["grey", "blue", "red", "yellow", "green", "pink", "purple", "cyan", "orange"];
+  const colors = [
+    "grey",
+    "blue",
+    "red",
+    "yellow",
+    "green",
+    "pink",
+    "purple",
+    "cyan",
+    "orange",
+  ];
   const successfulGroups = [];
   let colorIndex = 0;
 
   try {
-      const currentGroups = await chrome.tabGroups.query({});
-      const groupNameToIdMap = new Map();
-      currentGroups.forEach(g => groupNameToIdMap.set(g.title.toLowerCase(), g.id));
+    const currentGroups = await chrome.tabGroups.query({});
+    const groupNameToIdMap = new Map();
+    currentGroups.forEach((g) =>
+      groupNameToIdMap.set(g.title.toLowerCase(), g.id)
+    );
 
-      for (const [groupName, originalTabIds] of Object.entries(groupedTabs)) {
-        const trimmedGroupName = groupName.trim();
-        if (!trimmedGroupName || !Array.isArray(originalTabIds) || originalTabIds.length === 0) continue;
+    for (const [groupName, originalTabIds] of Object.entries(groupedTabs)) {
+      const trimmedGroupName = groupName.trim();
+      if (
+        !trimmedGroupName ||
+        !Array.isArray(originalTabIds) ||
+        originalTabIds.length === 0
+      )
+        continue;
 
-        const validTabIds = await validateTabIdsForGrouping(originalTabIds);
-        if (validTabIds.length === 0) {
-             console.log(`No valid, ungrouped tabs found for group "${trimmedGroupName}".`);
-            continue;
+      const validTabIds = await validateTabIdsForGrouping(originalTabIds);
+      if (validTabIds.length === 0) {
+        console.log(
+          `No valid, ungrouped tabs found for group "${trimmedGroupName}".`
+        );
+        continue;
+      }
+
+      const lowerGroupName = trimmedGroupName.toLowerCase();
+      let targetGroupId = groupNameToIdMap.get(lowerGroupName);
+
+      if (targetGroupId) {
+        try {
+          await chrome.tabs.group({
+            groupId: targetGroupId,
+            tabIds: validTabIds,
+          });
+          tabsAddedCount += validTabIds.length;
+          console.log(
+            `✅ Added ${validTabIds.length} tab(s) to existing group: "${trimmedGroupName}"`
+          );
+        } catch (e) {
+          console.error(`Error adding tabs to group "${trimmedGroupName}":`, e);
+          // *** FIX: Throw a robust error message ***
+          const errorMsg = e?.message || String(e) || "Unknown error";
+          throw new Error(
+            `Failed to add tabs to "${trimmedGroupName}": ${errorMsg}`
+          );
         }
-
-        const lowerGroupName = trimmedGroupName.toLowerCase();
-        let targetGroupId = groupNameToIdMap.get(lowerGroupName);
-
-        if (targetGroupId) {
+      } else {
+        try {
+          const newGroupId = await chrome.tabs.group({ tabIds: validTabIds });
+          const chosenColor = colors[colorIndex % colors.length];
+          await chrome.tabGroups.update(newGroupId, {
+            title: trimmedGroupName,
+            color: chosenColor,
+          });
+          groupsCreatedCount++;
+          successfulGroups.push(trimmedGroupName);
+          colorIndex++;
+          groupNameToIdMap.set(lowerGroupName, newGroupId);
+          console.log(
+            `✅ Created new group: "${trimmedGroupName}" with ${validTabIds.length} tabs.`
+          );
+        } catch (e) {
+          console.error(`Error creating new group "${trimmedGroupName}":`, e);
           try {
-              await chrome.tabs.group({ groupId: targetGroupId, tabIds: validTabIds });
-              tabsAddedCount += validTabIds.length;
-              console.log(`✅ Added ${validTabIds.length} tab(s) to existing group: "${trimmedGroupName}"`);
-          } catch (e) { 
-              console.error(`Error adding tabs to group "${trimmedGroupName}":`, e); 
-              // *** FIX: Throw a robust error message ***
-              const errorMsg = e?.message || String(e) || "Unknown error";
-              throw new Error(`Failed to add tabs to "${trimmedGroupName}": ${errorMsg}`);
-          }
-        } else {
-          try {
-              const newGroupId = await chrome.tabs.group({ tabIds: validTabIds });
-              const chosenColor = colors[colorIndex % colors.length];
-              await chrome.tabGroups.update(newGroupId, { title: trimmedGroupName, color: chosenColor });
-              groupsCreatedCount++;
-              successfulGroups.push(trimmedGroupName);
-              colorIndex++;
-              groupNameToIdMap.set(lowerGroupName, newGroupId);
-              console.log(`✅ Created new group: "${trimmedGroupName}" with ${validTabIds.length} tabs.`);
-          } catch(e) {
-               console.error(`Error creating new group "${trimmedGroupName}":`, e);
-               try { await chrome.tabs.ungroup(validTabIds); } catch {}
-               
-               // *** FIX: Throw a robust error message ***
-               const errorMsg = e?.message || String(e) || "Unknown error";
-               throw new Error(`Failed to create group "${trimmedGroupName}": ${errorMsg}`);
-          }
+            await chrome.tabs.ungroup(validTabIds);
+          } catch {}
+
+          // *** FIX: Throw a robust error message ***
+          const errorMsg = e?.message || String(e) || "Unknown error";
+          throw new Error(
+            `Failed to create group "${trimmedGroupName}": ${errorMsg}`
+          );
         }
       }
-      const success = (groupsCreatedCount > 0 || tabsAddedCount > 0);
-      return { 
-        success: success,
-        groupsCreated: groupsCreatedCount, 
-        tabsAddedToExisting: tabsAddedCount,
-        groups: successfulGroups,
-        // *** THIS IS THE FIX: Add a default error if success is false ***
-        error: success ? null : "No tabs were grouped. (They might be already grouped or no valid tabs found)"
-      };
-   } catch (error) {
+    }
+    const success = groupsCreatedCount > 0 || tabsAddedCount > 0;
+    return {
+      success: success,
+      groupsCreated: groupsCreatedCount,
+      tabsAddedToExisting: tabsAddedCount,
+      groups: successfulGroups,
+      // *** THIS IS THE FIX: Add a default error if success is false ***
+      error: success
+        ? null
+        : "No tabs were grouped. (They might be already grouped or no valid tabs found)",
+    };
+  } catch (error) {
     // *** FIX: This ensures a valid string is always returned ***
-    const errorMessage = error?.message || String(error) || "An unknown error occurred in createMultipleGroups";
+    const errorMessage =
+      error?.message ||
+      String(error) ||
+      "An unknown error occurred in createMultipleGroups";
     console.error("Error in createMultipleGroups:", error);
     return { success: false, error: errorMessage };
   }
@@ -441,63 +537,128 @@ export async function createMultipleGroups(groupedTabs) {
 
 // Robust AI Response Parser
 export const parseAIResponse = (responseString, tabs = []) => {
-  if (!responseString || typeof responseString !== 'string') {
-      return { valid: false, error: "Invalid AI response input (not a string or empty)." };
+  if (!responseString || typeof responseString !== "string") {
+    return {
+      valid: false,
+      error: "Invalid AI response input (not a string or empty).",
+    };
   }
   try {
-      const jsonMatch = responseString.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-          console.error("No JSON object found in AI response:", responseString);
-          return { valid: false, error: "No JSON object found in AI response." };
-      }
-
-      const potentialJson = jsonMatch[0];
-      const data = JSON.parse(potentialJson);
-
-      if (!data || typeof data !== 'object') {
-          throw new Error("Parsed data is not an object.");
-      }
-      if (!data.groups || typeof data.groups !== 'object') {
-          console.error("Invalid format: 'groups' key missing or not an object.", data);
-          return { valid: false, error: "Invalid format: 'groups' key missing or not an object." };
-      }
-
-      const normalizedGroups = {};
-      const allTabIdsFromInput = new Set((tabs || []).map(t => t.id));
-
-      for (const [rawName, ids] of Object.entries(data.groups)) {
-          const groupName = String(rawName).trim();
-          if (!groupName) continue;
-
-          if (!Array.isArray(ids)) {
-               console.warn(`Group "${groupName}" has invalid 'ids' (not an array), skipping.`);
-               continue;
-          }
-
-          const validIds = [];
-          for (const id of ids) {
-              const numId = Number(id);
-              if (!isNaN(numId) && allTabIdsFromInput.has(numId)) {
-                  validIds.push(numId);
-              } else {
-                  console.warn(`Invalid or unexpected tab ID (${id}) found in group "${groupName}", skipping ID.`);
-              }
-          }
-
-          if (validIds.length > 0) {
-              normalizedGroups[groupName] = validIds;
-          } else {
-              console.log(`Group "${groupName}" ended up empty after validation, removing group.`);
-          }
-      }
-
-      return {
-        groups: normalizedGroups,
-        explanation: typeof data.explanation === 'string' ? data.explanation.trim() : "AI organized tabs.",
-        valid: true,
-      };
-    } catch (err) {
-      console.error("Error parsing AI JSON response:", err, "Raw response:", responseString);
-      return { valid: false, error: `JSON parsing failed: ${err.message}` };
+    const jsonMatch = responseString.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.error("No JSON object found in AI response:", responseString);
+      return { valid: false, error: "No JSON object found in AI response." };
     }
+
+    const potentialJson = jsonMatch[0];
+    const data = JSON.parse(potentialJson);
+
+    if (!data || typeof data !== "object") {
+      throw new Error("Parsed data is not an object.");
+    }
+    if (!data.groups || typeof data.groups !== "object") {
+      console.error(
+        "Invalid format: 'groups' key missing or not an object.",
+        data
+      );
+      return {
+        valid: false,
+        error: "Invalid format: 'groups' key missing or not an object.",
+      };
+    }
+
+    const normalizedGroups = {};
+    const allTabIdsFromInput = new Set((tabs || []).map((t) => t.id));
+
+    for (const [rawName, ids] of Object.entries(data.groups)) {
+      const groupName = String(rawName).trim();
+      if (!groupName) continue;
+
+      if (!Array.isArray(ids)) {
+        console.warn(
+          `Group "${groupName}" has invalid 'ids' (not an array), skipping.`
+        );
+        continue;
+      }
+
+      const validIds = [];
+      for (const id of ids) {
+        const numId = Number(id);
+        if (!isNaN(numId) && allTabIdsFromInput.has(numId)) {
+          validIds.push(numId);
+        } else {
+          console.warn(
+            `Invalid or unexpected tab ID (${id}) found in group "${groupName}", skipping ID.`
+          );
+        }
+      }
+
+      if (validIds.length > 0) {
+        normalizedGroups[groupName] = validIds;
+      } else {
+        console.log(
+          `Group "${groupName}" ended up empty after validation, removing group.`
+        );
+      }
+    }
+
+    return {
+      groups: normalizedGroups,
+      explanation:
+        typeof data.explanation === "string"
+          ? data.explanation.trim()
+          : "AI organized tabs.",
+      valid: true,
+    };
+  } catch (err) {
+    console.error(
+      "Error parsing AI JSON response:",
+      err,
+      "Raw response:",
+      responseString
+    );
+    return { valid: false, error: `JSON parsing failed: ${err.message}` };
+  }
 };
+
+export async function expandGroupAndFocusFirstTab(groupId) {
+  if (!groupId || typeof groupId !== "number") {
+    console.error("Invalid groupId provided:", groupId);
+    return { success: false, error: "Invalid groupId." };
+  }
+
+  try {
+    // Step 1: Get the group's current state
+    const group = await chrome.tabGroups.get(groupId);
+
+    // Step 2: Expand the group if it's collapsed
+    if (group.collapsed) {
+      await chrome.tabGroups.update(groupId, { collapsed: false });
+    }
+
+    // Step 3: Find all tabs in that group
+    const tabsInGroup = await chrome.tabs.query({ groupId: groupId });
+
+    // If the group is empty, we're done.
+    if (!tabsInGroup || tabsInGroup.length === 0) {
+      console.log(`Group ${groupId} was expanded but is empty.`);
+      return { success: true, message: "Group expanded, but it is empty." };
+    }
+
+    // Sort tabs by their index (position in the window) to find the first one
+    tabsInGroup.sort((a, b) => a.index - b.index);
+    const firstTab = tabsInGroup[0];
+
+    // Step 4: Focus the tab's window and then activate the tab
+    await chrome.windows.update(firstTab.windowId, { focused: true });
+    await chrome.tabs.update(firstTab.id, { active: true });
+
+    return { success: true, tabId: firstTab.id };
+  } catch (error) {
+    console.error(`Error expanding/focusing group ${groupId}:`, error);
+    return {
+      success: false,
+      error: error.message || "An unexpected error occurred.",
+    };
+  }
+}

@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
   aiUnavailableMessage,
+  completerSystemPrompt,
   expandGroupAndFocusFirstTab,
   getAllGroups,
   groupExistingTabs,
@@ -90,11 +91,12 @@ export default function App() {
   const [language, setLanguage] = useState({ name: "English", code: "en" });
   const [enabled, setEnabled] = useState(true);
   const [awaitingUsername, setAwaitingUsername] = useState(false);
-  const [suggestions, setSuggestions] = useState([]);
+  const [inlineSuggestion, setInlineSuggestion] = useState("");
 
   const sessionRef = useRef(null);
   const chatEndRef = useRef(null);
   const proofreaderRef = useRef(null);
+  const completerSessionRef = useRef(null);
   const [languageSession, setLanguageSession] = useState(null);
 
   const promptRef = useRef(prompt);
@@ -110,7 +112,8 @@ export default function App() {
 
   useEffect(() => {
     // Debounce suggestions
-    const handler = setTimeout(() => {
+    const handler = setTimeout(async () => {
+      // <--- Note the 'async'
       // Read from refs to get the latest state
       const currentPrompt = promptRef.current;
       const isLoading = loadingRef.current;
@@ -120,110 +123,43 @@ export default function App() {
         isLoading ||
         isShowingGroups ||
         !currentPrompt ||
-        currentPrompt.length < 2
+        currentPrompt.length < 2 || // Don't trigger for just one letter
+        !completerSessionRef.current
       ) {
-        setSuggestions([]);
+        // Don't trigger if AI isn't ready
+        setInlineSuggestion(""); // Clear inline suggestion
         return;
+      } // --- Always clear button suggestions per user request "not on the top" ---
+
+      try {
+        const response = await completerSessionRef.current.prompt(
+          currentPrompt
+        );
+
+        if (
+          response &&
+          response !== "NO_MATCH" &&
+          response.length > currentPrompt.length &&
+          response.toLowerCase().startsWith(currentPrompt.toLowerCase())
+        ) {
+          // We have a valid completion
+          // We must preserve the user's original casing
+          const completion = response.substring(currentPrompt.length);
+          setInlineSuggestion(currentPrompt + completion);
+        } else {
+          // AI returned "NO_MATCH" or an invalid/shorter response
+          setInlineSuggestion("");
+        }
+      } catch (err) {
+        console.error("AI Autocomplete error:", err);
+        setInlineSuggestion("");
       }
-
-      const lower = currentPrompt.toLowerCase().trim();
-      let newSuggestions = [];
-
-      // 1. Streaming/Website Pattern (from your request)
-      const siteMatch = lower.match(
-        /(?:watch|see)\s+["']?(.+?)["']?\s+on\s+(hotstar|netflix|prime|crunchyroll|youtube|hulu|disney\+)/i,
-      );
-      if (siteMatch) {
-        const query = siteMatch[1];
-        const site = siteMatch[2];
-        newSuggestions.push({
-          label: `Search "${query}" on ${site}`,
-          action: "smartOpen",
-          query: `${query} on ${site}`,
-        });
-      }
-
-      // 2. "[query] website" Pattern (from your request)
-      const websiteMatch = lower.match(/(.+)\s+website$/i);
-      if (websiteMatch && !siteMatch) {
-        // Avoid conflict with streaming match
-        const query = websiteMatch[1];
-        newSuggestions.push({
-          label: `Open website for "${query}"`,
-          action: "smartOpen",
-          query: `${query} website`, // Pass full query to smartOpen
-        });
-      }
-      
-      // 3. Stack Overflow (SO) Command
-      const soMatch = lower.match(/^so\s+(.+)/);
-      if (soMatch) {
-        const query = soMatch[1];
-        // Only show this suggestion, as it's very specific
-        newSuggestions = [{
-          label: `Search "${query}" on Stack Overflow`,
-          action: "smartOpen",
-          query: `${query} stackoverflow`,
-        }];
-      }
-
-      // 4. Developer Pattern (Expanded)
-      const devTerms = [
-        // Languages
-        "javascript", "react", "python", "node.js", "css", "html", "typescript", "java", "c++", "c#", "rust", "go", "golang", "php", "sql", "ruby", "swift", "kotlin", "scala", "perl", "lua",
-        // Frameworks / Libraries
-        "vue", "angular", "svelte", "next.js", "nextjs", "gatsby", "express", "django", "flask", "fastapi", "laravel", "symfony", "spring", ".net", "react native", "flutter", "jquery", "bootstrap", "tailwind", "redux", "mobx", "jest", "webpack", "vite", "babel",
-        // Tools / Platforms
-        "docker", "kubernetes", "k8s", "git", "npm", "yarn", "aws", "gcp", "azure", "firebase", "mongo", "mongodb", "postgres", "postgresql", "mysql", "redis", "graphql", "api", "json", "xml", "vim"
-      ];
-      
-      const codingKeywords = [
-        "error", "bug", "fix", "debug", "install", "how to", "tutorial", "docs", "documentation", "api", "sdk", "library", "framework", "package", "function", "class", "method", "variable", "algorithm", "data structure"
-      ];
-
-      // Check 1: Is the query itself a known dev term (e.g., user types "react")
-      const isDevTerm = devTerms.some((term) => lower === term);
-
-      // Check 2: Does the query contain a common coding keyword? (e.g., "react hook error")
-      // We only check this if it's NOT a streaming/website match
-      const containsCodingKeyword = !siteMatch && !websiteMatch && !soMatch && codingKeywords.some((keyword) => lower.includes(keyword));
-
-      // Use `currentPrompt` in the label to preserve user's casing
-      if (isDevTerm || (containsCodingKeyword && lower.length > 5)) {
-        newSuggestions.push({
-          label: `Search "${currentPrompt}" on Stack Overflow`,
-          action: "smartOpen",
-          query: `${currentPrompt} stackoverflow`,
-        });
-        newSuggestions.push({
-          label: `Find "${currentPrompt}" on GitHub`,
-          action: "smartOpen",
-          query: `${currentPrompt} github`,
-        });
-      }
-
-      // 4. Default Fallbacks (if no specific matches)
-      if (newSuggestions.length === 0 && lower.length > 2) {
-        newSuggestions.push({
-          label: `Search open tabs for "${currentPrompt}"`,
-          action: "searchTabs",
-          query: currentPrompt,
-        });
-        newSuggestions.push({
-          label: `Search web for "${currentPrompt}"`,
-          action: "smartOpen",
-          query: currentPrompt,
-        });
-      }
-
-      // Limit to 3 suggestions
-      setSuggestions(newSuggestions.slice(0, 3));
-    }, 250); // 250ms debounce
+    }, 300); // 300ms debounce, giving the on-device AI a bit more time
 
     return () => {
       clearTimeout(handler);
     };
-  }, [prompt]); // Re-run whenever prompt text changes
+  }, [prompt]); // Re-run whenever prompt text changes // Re-run whenever prompt text changes
 
   // REPLACE BOTH of your initial useEffect hooks with THIS ONE
   useEffect(() => {
@@ -277,6 +213,7 @@ export default function App() {
     // Call all your init functions
     initializeAI();
     initializeProofreaderAI();
+    initializeAICompleter();
     updateTabCount();
     checkBackgroundAIStatus();
   }, []); // This should only run once on mount
@@ -380,6 +317,29 @@ export default function App() {
       console.error("Language change failed:", error);
       // If translation fails, you might want to fall back to English
       // or just let the previous (or default) text remain.
+    }
+  };
+
+  const initializeAICompleter = async () => {
+    // ⬇️ ADD THIS LINE ⬇️
+    console.log(
+      "Initializing AI Completer with prompt:",
+      completerSystemPrompt
+    );
+    try {
+      if (typeof LanguageModel !== "undefined") {
+        const availability = await LanguageModel.availability();
+        if (availability === "available") {
+          completerSessionRef.current = await LanguageModel.create({
+            initialPrompts: [
+              { role: "system", content: completerSystemPrompt },
+            ],
+          });
+          console.log("✅ AI Autocompleter initialized");
+        }
+      }
+    } catch (err) {
+      console.error("❌ AI Autocompleter initialization failed:", err);
     }
   };
 
@@ -544,26 +504,26 @@ export default function App() {
       }
 
       // Handle "so [query]"
-    const soMatch = text.match(/^so\s+(.+)/i);
-    if (soMatch) {
-      const query = soMatch[1];
-      return {
-        type: "smartOpen",
-        query: `${query} stackoverflow`, // Pass the full query to smartOpen
-      };
-    }
+      const soMatch = text.match(/^so\s+(.+)/i);
+      if (soMatch) {
+        const query = soMatch[1];
+        return {
+          type: "smartOpen",
+          query: `${query} stackoverflow`, // Pass the full query to smartOpen
+        };
+      }
 
       // Handles "[query] website" and "watch [query] on [site]"
       const siteMatch = text.match(
-      /(.+)\s+(?:website|on\s+hotstar|on\s+netflix|on\s+prime|on\s+crunchyroll|on\s+youtube|on\s+hulu|on\s+disney\+)/i,
-    );
-    if (siteMatch) {
-      // The full text is the best query for smartOpenSite
-      return {
-        type: "smartOpen",
-        query: text,
-      };
-    }
+        /(.+)\s+(?:website|on\s+hotstar|on\s+netflix|on\s+prime|on\s+crunchyroll|on\s+youtube|on\s+hulu|on\s+disney\+)/i
+      );
+      if (siteMatch) {
+        // The full text is the best query for smartOpenSite
+        return {
+          type: "smartOpen",
+          query: text,
+        };
+      }
     }
 
     // to check if the user is wanting to open github account
@@ -1305,7 +1265,7 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
         const openResult = await smartOpenSite(
           command.query,
           command.query,
-          false,
+          false
         );
 
         setLoading(false);
@@ -1455,6 +1415,23 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
     }
   };
 
+  const handleKeyDown = (e) => {
+    // Autocomplete on Tab or ArrowRight
+    if ((e.key === "Tab" || e.key === "ArrowRight") && inlineSuggestion) {
+      // Only autocomplete if the cursor is at the end of the input
+      if (e.target.selectionStart === prompt.length) {
+        e.preventDefault(); // Stop Tab from changing focus
+        setPrompt(inlineSuggestion);
+        setInlineSuggestion("");
+      }
+    } // Handle Enter key
+
+    if (e.key === "Enter" && !loading) {
+      e.preventDefault(); // Prevent newlines in case it was a textarea
+      handleSend();
+    }
+  };
+
   const handleSuggestionClick = async (suggestion) => {
     if (loading) return;
 
@@ -1465,7 +1442,6 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
     // 1. Add to chat & clear input
     addMessage(label, "user"); // Use the suggestion label as the user message
     setPrompt("");
-    setSuggestions([]);
     setLoading(true);
 
     // 2. Execute action
@@ -1485,8 +1461,8 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
           addMessage(`❌ Could not open or find "${query}"`, "bot");
         }
         return;
-      } 
-      
+      }
+
       if (action === "searchTabs") {
         const searchResult = await searchAndOpen(query);
 
@@ -1498,14 +1474,17 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
           }
           if (searchResult.confidence) {
             const emoji = { high: "🎯", medium: "👍", low: "🤔" };
-            msg += `\n${
-              emoji[searchResult.confidence] || "🤔"
-            } Confidence: ${searchResult.confidence}`;
+            msg += `\n${emoji[searchResult.confidence] || "🤔"} Confidence: ${
+              searchResult.confidence
+            }`;
           }
           addMessage(msg, "bot");
         } else {
           // If tab search fails, fall back to web search
-          addMessage(`ℹ️ No tabs found for "${query}". Searching web...`, "system");
+          addMessage(
+            `ℹ️ No tabs found for "${query}". Searching web...`,
+            "system"
+          );
           const openResult = await smartOpenSite(query, query, false);
           setLoading(false);
           if (openResult.success) {
@@ -1619,15 +1598,17 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
                 ) : (
                   <>
                     <div
-                      onClick={() => handleGroupClick(group.id)}
-                      title={`Switch to group: ${group.title}`}
                       className={`flex justify-between items-center p-3.5 rounded-xl border transition-all cursor-pointer ${
                         isDark
                           ? "bg-slate-800 border-slate-700/50 hover:bg-slate-700/60"
                           : "bg-gray-50 border-gray-200 hover:bg-gray-100"
                       }`}
                     >
-                      <div className="flex items-center gap-3 cursor-pointer">
+                      <div
+                        onClick={() => handleGroupClick(group.id)}
+                        title={`Switch to group: ${group.title}`}
+                        className="flex items-center gap-3 cursor-pointer"
+                      >
                         <div
                           className={`w-3 h-3 rounded-full ${
                             group.color === "blue"
@@ -1981,40 +1962,39 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
               : "bg-white/80 border-t border-gray-200/70"
           } backdrop-blur-lg`}
         >
-        {/* --- SUGGESTION AREA --- */}
-          {suggestions.length > 0 && (
-            <div className="flex flex-wrap gap-2 mb-2.5 animate-fade-in">
-              {suggestions.map((s, i) => (
-                <button
-                  key={i}
-                  onClick={() => handleSuggestionClick(s)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                    isDark
-                      ? "bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-cyan-300"
-                      : "bg-gray-200 text-slate-600 hover:bg-gray-300 hover:text-cyan-700"
-                  }`}
-                  title={`Run: ${s.query}`}
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
-          )}
-          {/* --- END SUGGESTION AREA --- */}
+          {/* --- SUGGESTION AREA --- */}
           <div className="flex gap-2">
-            <input
-              type="text"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && !loading && handleSend()}
-              placeholder="Search tabs, open sites, or organize..."
-              disabled={loading}
-              className={`flex-1 px-4 py-3 rounded-xl text-sm transition-all outline-none focus:ring-2 focus:ring-cyan-500 ${
-                isDark
-                  ? "bg-slate-800 border border-slate-700 text-white placeholder-slate-400 "
-                  : "bg-white border border-slate-300 text-slate-900 placeholder-slate-400 "
-              } ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
-            />
+            <div className="relative flex-1">
+              <input
+                type="text"
+                value={inlineSuggestion}
+                readOnly
+                disabled
+                className={`absolute inset-0 px-4 py-3 rounded-xl text-sm outline-none border-transparent ${
+                  isDark ? "text-slate-600" : "text-slate-400"
+                }
+${isDark ? "bg-slate-800" : "bg-white"}
+                  ${/* This is the magic */ ""}
+bg-transparent
+`}
+              />
+              <input
+                type="text"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Search tabs, open sites, or organize..."
+                disabled={loading}
+                className={`relative w-full px-4 py-3 rounded-xl text-sm transition-all outline-none focus:ring-2 focus:ring-cyan-500 
+                  ${/* This is the magic: transparent bg */ ""}
+bg-transparent
+${
+  isDark
+    ? "border border-slate-700 text-white placeholder-slate-400 "
+    : "bg-white border border-slate-300 text-slate-900 placeholder-slate-400 "
+} ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
+              />{" "}
+            </div>
             <button
               onClick={handleSend}
               disabled={loading || !prompt.trim()}
@@ -2026,7 +2006,7 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
               title="Send message"
             >
               <SendHorizontal size={18} />
-            </button>
+            </button>{" "}
           </div>
         </div>
       )}

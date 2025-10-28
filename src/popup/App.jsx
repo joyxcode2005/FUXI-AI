@@ -89,11 +89,140 @@ export default function App() {
   const [language, setLanguage] = useState({ name: "English", code: "en" });
   const [enabled, setEnabled] = useState(true);
   const [awaitingUsername, setAwaitingUsername] = useState(false);
+  const [suggestions, setSuggestions] = useState([]);
 
   const sessionRef = useRef(null);
   const chatEndRef = useRef(null);
   const proofreaderRef = useRef(null);
   const [languageSession, setLanguageSession] = useState(null);
+
+  const promptRef = useRef(prompt);
+  const loadingRef = useRef(loading);
+  const showGroupManagerRef = useRef(showGroupManager);
+
+  // ADD THIS useEffect to keep refs in sync
+  useEffect(() => {
+    promptRef.current = prompt;
+    loadingRef.current = loading;
+    showGroupManagerRef.current = showGroupManager;
+  }, [prompt, loading, showGroupManager]);
+
+  useEffect(() => {
+    // Debounce suggestions
+    const handler = setTimeout(() => {
+      // Read from refs to get the latest state
+      const currentPrompt = promptRef.current;
+      const isLoading = loadingRef.current;
+      const isShowingGroups = showGroupManagerRef.current;
+
+      if (
+        isLoading ||
+        isShowingGroups ||
+        !currentPrompt ||
+        currentPrompt.length < 2
+      ) {
+        setSuggestions([]);
+        return;
+      }
+
+      const lower = currentPrompt.toLowerCase().trim();
+      let newSuggestions = [];
+
+      // 1. Streaming/Website Pattern (from your request)
+      const siteMatch = lower.match(
+        /(?:watch|see)\s+["']?(.+?)["']?\s+on\s+(hotstar|netflix|prime|crunchyroll|youtube|hulu|disney\+)/i,
+      );
+      if (siteMatch) {
+        const query = siteMatch[1];
+        const site = siteMatch[2];
+        newSuggestions.push({
+          label: `Search "${query}" on ${site}`,
+          action: "smartOpen",
+          query: `${query} on ${site}`,
+        });
+      }
+
+      // 2. "[query] website" Pattern (from your request)
+      const websiteMatch = lower.match(/(.+)\s+website$/i);
+      if (websiteMatch && !siteMatch) {
+        // Avoid conflict with streaming match
+        const query = websiteMatch[1];
+        newSuggestions.push({
+          label: `Open website for "${query}"`,
+          action: "smartOpen",
+          query: `${query} website`, // Pass full query to smartOpen
+        });
+      }
+      
+      // 3. Stack Overflow (SO) Command
+      const soMatch = lower.match(/^so\s+(.+)/);
+      if (soMatch) {
+        const query = soMatch[1];
+        // Only show this suggestion, as it's very specific
+        newSuggestions = [{
+          label: `Search "${query}" on Stack Overflow`,
+          action: "smartOpen",
+          query: `${query} stackoverflow`,
+        }];
+      }
+
+      // 4. Developer Pattern (Expanded)
+      const devTerms = [
+        // Languages
+        "javascript", "react", "python", "node.js", "css", "html", "typescript", "java", "c++", "c#", "rust", "go", "golang", "php", "sql", "ruby", "swift", "kotlin", "scala", "perl", "lua",
+        // Frameworks / Libraries
+        "vue", "angular", "svelte", "next.js", "nextjs", "gatsby", "express", "django", "flask", "fastapi", "laravel", "symfony", "spring", ".net", "react native", "flutter", "jquery", "bootstrap", "tailwind", "redux", "mobx", "jest", "webpack", "vite", "babel",
+        // Tools / Platforms
+        "docker", "kubernetes", "k8s", "git", "npm", "yarn", "aws", "gcp", "azure", "firebase", "mongo", "mongodb", "postgres", "postgresql", "mysql", "redis", "graphql", "api", "json", "xml", "vim"
+      ];
+      
+      const codingKeywords = [
+        "error", "bug", "fix", "debug", "install", "how to", "tutorial", "docs", "documentation", "api", "sdk", "library", "framework", "package", "function", "class", "method", "variable", "algorithm", "data structure"
+      ];
+
+      // Check 1: Is the query itself a known dev term (e.g., user types "react")
+      const isDevTerm = devTerms.some((term) => lower === term);
+
+      // Check 2: Does the query contain a common coding keyword? (e.g., "react hook error")
+      // We only check this if it's NOT a streaming/website match
+      const containsCodingKeyword = !siteMatch && !websiteMatch && !soMatch && codingKeywords.some((keyword) => lower.includes(keyword));
+
+      // Use `currentPrompt` in the label to preserve user's casing
+      if (isDevTerm || (containsCodingKeyword && lower.length > 5)) {
+        newSuggestions.push({
+          label: `Search "${currentPrompt}" on Stack Overflow`,
+          action: "smartOpen",
+          query: `${currentPrompt} stackoverflow`,
+        });
+        newSuggestions.push({
+          label: `Find "${currentPrompt}" on GitHub`,
+          action: "smartOpen",
+          query: `${currentPrompt} github`,
+        });
+      }
+
+      // 4. Default Fallbacks (if no specific matches)
+      if (newSuggestions.length === 0 && lower.length > 2) {
+        newSuggestions.push({
+          label: `Search open tabs for "${currentPrompt}"`,
+          action: "searchTabs",
+          query: currentPrompt,
+        });
+        newSuggestions.push({
+          label: `Search web for "${currentPrompt}"`,
+          action: "smartOpen",
+          query: currentPrompt,
+        });
+      }
+
+      // Limit to 3 suggestions
+      setSuggestions(newSuggestions.slice(0, 3));
+    }, 250); // 250ms debounce
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [prompt]); // Re-run whenever prompt text changes
 
   // REPLACE BOTH of your initial useEffect hooks with THIS ONE
   useEffect(() => {
@@ -412,6 +541,28 @@ export default function App() {
           originalText: text,
         };
       }
+
+      // Handle "so [query]"
+    const soMatch = text.match(/^so\s+(.+)/i);
+    if (soMatch) {
+      const query = soMatch[1];
+      return {
+        type: "smartOpen",
+        query: `${query} stackoverflow`, // Pass the full query to smartOpen
+      };
+    }
+
+      // Handles "[query] website" and "watch [query] on [site]"
+      const siteMatch = text.match(
+      /(.+)\s+(?:website|on\s+hotstar|on\s+netflix|on\s+prime|on\s+crunchyroll|on\s+youtube|on\s+hulu|on\s+disney\+)/i,
+    );
+    if (siteMatch) {
+      // The full text is the best query for smartOpenSite
+      return {
+        type: "smartOpen",
+        query: text,
+      };
+    }
     }
 
     // to check if the user is wanting to open github account
@@ -1134,6 +1285,28 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
         return;
       }
 
+      if (command.type === "smartOpen") {
+        addMessage(`ℹ️ Opening website for "${command.query}"...`, "system");
+        const openResult = await smartOpenSite(
+          command.query,
+          command.query,
+          false,
+        );
+
+        setLoading(false);
+        if (openResult.success) {
+          let msg = `🌐 Opened: "${openResult.title || openResult.url}"`;
+          if (openResult.isFirstResult) msg += "\n\n✨ Top result";
+          if (openResult.source) msg += `\n🔍 Source: ${openResult.source}`;
+          addMessage(msg, "bot");
+          await updateTabCount();
+        } else {
+          addMessage(`❌ Could not open or find "${command.query}"`, "bot");
+        }
+        return;
+      }
+      // END OF NEW BLOCK
+
       if (command.type === "openGithub") {
         chrome.storage.local.get("githubUsername", (data) => {
           if (data.githubUsername) {
@@ -1264,6 +1437,77 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
       const errorMsg =
         err?.message || String(err) || "A critical error occurred.";
       addMessage(`❌ Error: ${errorMsg}`, "bot");
+    }
+  };
+
+  const handleSuggestionClick = async (suggestion) => {
+    if (loading) return;
+
+    const label = suggestion.label;
+    const action = suggestion.action;
+    const query = suggestion.query;
+
+    // 1. Add to chat & clear input
+    addMessage(label, "user"); // Use the suggestion label as the user message
+    setPrompt("");
+    setSuggestions([]);
+    setLoading(true);
+
+    // 2. Execute action
+    try {
+      if (action === "smartOpen") {
+        addMessage(`ℹ️ Opening website for "${query}"...`, "system");
+        const openResult = await smartOpenSite(query, query, false);
+
+        setLoading(false);
+        if (openResult.success) {
+          let msg = `🌐 Opened: "${openResult.title || openResult.url}"`;
+          if (openResult.isFirstResult) msg += "\n\n✨ Top result";
+          if (openResult.source) msg += `\n🔍 Source: ${openResult.source}`;
+          addMessage(msg, "bot");
+          await updateTabCount();
+        } else {
+          addMessage(`❌ Could not open or find "${query}"`, "bot");
+        }
+        return;
+      } 
+      
+      if (action === "searchTabs") {
+        const searchResult = await searchAndOpen(query);
+
+        if (searchResult.opened) {
+          setLoading(false);
+          let msg = `✅ Switched to: "${searchResult.title}"`;
+          if (searchResult.candidateCount > 1) {
+            msg += `\n\n📊 Found ${searchResult.candidateCount} matches`;
+          }
+          if (searchResult.confidence) {
+            const emoji = { high: "🎯", medium: "👍", low: "🤔" };
+            msg += `\n${
+              emoji[searchResult.confidence] || "🤔"
+            } Confidence: ${searchResult.confidence}`;
+          }
+          addMessage(msg, "bot");
+        } else {
+          // If tab search fails, fall back to web search
+          addMessage(`ℹ️ No tabs found for "${query}". Searching web...`, "system");
+          const openResult = await smartOpenSite(query, query, false);
+          setLoading(false);
+          if (openResult.success) {
+            let msg = `🌐 Opened: "${openResult.title || openResult.url}"`;
+            addMessage(msg, "bot");
+          } else {
+            addMessage(`❌ Could not find tab or open "${query}"`, "bot");
+          }
+        }
+        return;
+      }
+    } catch (err) {
+      setLoading(false);
+      const errorMessage =
+        err?.message || String(err) || "An unknown error occurred";
+      console.error("Error in handleSuggestionClick:", err);
+      addMessage(`❌ Error: ${errorMessage}`, "bot");
     }
   };
 
@@ -1720,6 +1964,26 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
               : "bg-white/80 border-t border-gray-200/70"
           } backdrop-blur-lg`}
         >
+        {/* --- SUGGESTION AREA --- */}
+          {suggestions.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-2.5 animate-fade-in">
+              {suggestions.map((s, i) => (
+                <button
+                  key={i}
+                  onClick={() => handleSuggestionClick(s)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    isDark
+                      ? "bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-cyan-300"
+                      : "bg-gray-200 text-slate-600 hover:bg-gray-300 hover:text-cyan-700"
+                  }`}
+                  title={`Run: ${s.query}`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          )}
+          {/* --- END SUGGESTION AREA --- */}
           <div className="flex gap-2">
             <input
               type="text"

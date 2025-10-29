@@ -142,64 +142,118 @@ I can find open tabs, open new sites intelligently, and organize your workspace.
 
 ---
 
-### 1. 🔍 Smart Search & Open (Primary Command)
+### 1. 🔍 Reliable Smart Search (Your Main Command)
 
-This is the main "do-it-all" command. It always **searches your open tabs first** (including their content) and switches to the best match. If no open tab is found, it intelligently searches the web.
+This is the main "do-it-all" command. It provides **reliable search** by instantly scanning the **title, URL, and full text content** of all your open tabs to find the best match.
 
-You can trigger it just by typing your query, or by using a command word:
+If no open tab is found, it intelligently searches the web for you.
 
 **Examples (all do the same thing):**
-- **"open react dashboard"**
-- **"find react dashboard"**
-- **"search react dashboard"**
-- **"react dashboard"**
+* **"react dashboard"** (Will find your open \`localhost:3000/dashboard\` tab)
+* **"find my-jira-ticket-123"** (Finds the tab by its title or content)
+* **"open pull request"**
+* **"search for the presentation"**
 
 ---
 
-### 2. 💻 Developer Tools (Smart Opener)
+### 2. 💻 Smart Opener & Shortcuts
 
-The Smart Search is even smarter for developers. It uses APIs to find the *exact* repo or answer.
+The smart search is even smarter for developers, media, and common sites.
 
-**GitHub Examples:**
-- **"open github react"** → Opens the \`facebook/react\` repo
-- **"open github nextjs"** → Opens the \`vercel/next.js\` repo
+**Developer Examples:**
+* **"open github react"** → Opens the \`facebook/react\` repo
+* **"open so react query error"** → Finds the top-rated answer
+* **"so how to center a div"**
+* **"open github account"** → Asks for and saves your username, then opens your profile.
 
-**Stack Overflow Examples:**
-- **"open so react query error"** → Finds the top-rated answer
-- **"so how to center a div"**
+**Media & Content Search:**
+Use the **"... on [platform]"** pattern to find videos, movies, and tutorials.
+* **"i want to see react tutorial on youtube"**
+* **"open oppenheimer review on youtube"**
+* **"find stranger things on netflix"**
+* **"watch the boys on prime"**
+
+**Quick Site Shortcuts:**
+* **"listen to music"** → Opens Spotify
+* **"watch reels"** → Opens Instagram Reels
+* **"watch shorts"** → Opens YouTube Shorts
+* **"check email"** → Opens Gmail
 
 ---
 
 ### 3. 📧 Gmail Context Search
 
-Search the content of your open Gmail tabs. *This is separate from the main search.*
+Search *inside* your open Gmail tabs (this is separate from the main search).
 
 **Examples:**
-- **"find mail from google"**
-- **"open email about meeting"**
-- **"show mail from john"**
+* **"find mail from google"**
+* **"open email about meeting"**
+* **"show mail from john"**
 
 ---
 
-### 4. 🎬 Quick Media & Site Shortcuts
+### 4. 🗂️ Tab & Group Organization
 
-These commands go directly to specific places.
+* **"organize"** / **"organize my tabs"**: Lets the AI analyze and group all ungrouped tabs.
+* **"group all as [name]"**: Groups all ungrouped tabs into a single new group (e.g., \`group all as Work\`).
+* **"list groups"** / **"groups"**: Shows the group manager UI.
+* **"rename [old] to [new]"**: Renames an existing group (e.g., \`rename Work to Project X\`).
+* **"ungroup [name]"**: Ungroups all tabs from a specific group.
+* **"help"**: Shows this help message.
+`;
 
-- **"listen to music"** / **"play music"** → Opens Spotify
-- **"watch reels"** → Opens Instagram Reels
-- **"watch shorts"** → Opens YouTube Shorts
-- **"check email"** → Opens Gmail
+//  NEW HTML VERSION HELP
+export const helpMessageHTML = `
+<div class="text-sm" style="color: inherit;">
+  <h2 class="text-lg font-bold mb-2 flex items-center gap-2">🚀 AI Tab Manager Help</h2>
+  <p class="mb-3">I can find open tabs, open new sites intelligently, and organize your workspace.</p>
+  <hr class="my-3 border-slate-600/50">
 
----
+  <h3 class="text-base font-semibold mt-4 mb-2">1. 🔍 Reliable Smart Search (Your Main Command)</h3>
+  <p class="mb-2">This is the main "do-it-all" command. It provides <strong class="font-semibold text-black-300">reliable search</strong> by instantly scanning the <strong class="font-semibold">title, URL, and full text content</strong> of all your open tabs to find the best match.</p>
+  <p class="mb-2">If no open tab is found, it intelligently searches the web for you.</p>
+  <ul class="list-disc list-inside pl-2 space-y-1 mb-2">
+    <li><strong>"react dashboard"</strong> (Finds your \`localhost:3000\` tab)</li>
+    <li><strong>"find my-jira-ticket-123"</strong></li>
+    <li><strong>"open pull request"</strong></li>
+  </ul>
 
-### 5. 🗂️ Tab & Group Organization
+  <h3 class="text-base font-semibold mt-4 mb-2">2. 💻 Smart Opener & Shortcuts</h3>
+  <p class="font-medium mb-1 mt-1">Developer Examples:</p>
+  <ul class="list-disc list-inside pl-2 space-y-1 mb-2">
+    <li><strong>"open github react"</strong> → Opens \`facebook/react\`</li>
+    <li><strong>"open so react query error"</strong> → Finds top answer</li>
+    <li><strong>"open github account"</strong> → Opens your profile</li>
+  </ul>
+  <p class="font-medium mb-1 mt-2">Media & Content Search:</p>
+  <ul class="list-disc list-inside pl-2 space-y-1 mb-2">
+    <li><strong>"i want to see react tutorial on youtube"</strong></li>
+    <li><strong>"open oppenheimer review on youtube"</strong></li>
+    <li><strong>"find stranger things on netflix"</strong></li>
+  </ul>
+  <p class="font-medium mb-1 mt-2">Quick Site Shortcuts:</p>
+  <ul class="list-disc list-inside pl-2 space-y-1 mb-2">
+    <li><strong>"listen to music"</strong> → Opens Spotify</li>
+    <li><strong>"watch reels"</strong> → Opens Instagram Reels</li>
+  </ul>
 
-- **"organize my tabs"** / **"organize"**: Lets the AI analyze and group all ungrouped tabs.
-- **"group all as [name]"**: Groups all ungrouped tabs into a single new group.
-- **"list groups"** / **"groups"**: Shows the group manager UI.
-- **"rename [old] to [new]"**: Renames an existing group.
-- **"ungroup [name]"**: Ungroups all tabs from a group.
-- **"help"**: Shows this help message.
+  <h3 class="text-base font-semibold mt-4 mb-2">3. 📧 Gmail Context Search</h3>
+  <p class="mb-2">Search <em>inside</em> your open Gmail tabs (this is separate from the main search).</p>
+  <ul class="list-disc list-inside pl-2 space-y-1 mb-2">
+    <li><strong>"find mail from google"</strong></li>
+    <li><strong>"open email about meeting"</strong></li>
+  </ul>
+
+  <h3 class="text-base font-semibold mt-4 mb-2">4. 🗂️ Tab & Group Organization</h3>
+  <ul class="list-disc list-inside pl-2 space-y-1">
+    <li><strong>"organize"</strong> / <strong>"organize my tabs"</strong></li>
+    <li><strong>"group all as [name]"</strong> (e.g., \`group all as Work\`)</li>
+    <li><strong>"list groups"</strong> / <strong>"groups"</strong></li>
+    <li><strong>"rename [old] to [new]"</strong></li>
+    <li><strong>"ungroup [name]"</strong></li>
+    <li><strong>"help"</strong> (Shows this message)</li>
+  </ul>
+</div>
 `;
 
 export const completerSystemPrompt = `
@@ -662,6 +716,7 @@ export async function expandGroupAndFocusFirstTab(groupId) {
 
     // Step 3: Find all tabs in that group
     const tabsInGroup = await chrome.tabs.query({ groupId: groupId });
+    console.log("tab"+tabsInGroup)
 
     // If the group is empty, we're done.
     if (!tabsInGroup || tabsInGroup.length === 0) {
@@ -672,7 +727,7 @@ export async function expandGroupAndFocusFirstTab(groupId) {
     // Sort tabs by their index (position in the window) to find the first one
     tabsInGroup.sort((a, b) => a.index - b.index);
     const firstTab = tabsInGroup[0];
-
+    console.log("firstTab"+firstTab)
     // Step 4: Focus the tab's window and then activate the tab
     await chrome.windows.update(firstTab.windowId, { focused: true });
     await chrome.tabs.update(firstTab.id, { active: true });

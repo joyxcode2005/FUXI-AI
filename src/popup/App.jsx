@@ -19,6 +19,7 @@ import {
   getAllGroups,
   groupExistingTabs,
   helpMessage,
+  helpMessageHTML,
   parseAIResponse,
   renameGroup,
   systemPrompt,
@@ -421,33 +422,6 @@ export default function App() {
       return newMessages;
     });
   }, []);
-
-  const getAllTabs = async (includeGrouped = false) => {
-    const tabs = await chrome.tabs.query({ currentWindow: true });
-    return tabs
-      .filter((tab) => {
-        const url = tab.url || "";
-        const ok =
-          !url.startsWith("chrome://") &&
-          !url.startsWith("chrome-extension://") &&
-          !url.startsWith("edge://") &&
-          !url.startsWith("about:");
-        if (!ok) return false;
-        if (
-          !includeGrouped &&
-          tab.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE
-        )
-          return false;
-        return true;
-      })
-      .map((tab) => ({
-        id: tab.id,
-        title: tab.title,
-        url: tab.url,
-        groupId: tab.groupId,
-        windowId: tab.windowId,
-      }));
-  };
 
   const detectCommand = (text) => {
     const lower = text.toLowerCase().trim();
@@ -1108,7 +1082,7 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
     // We don't need to set global loading, as this should be fast
     console.log(`Expanding and focusing group ${groupId}`);
     const result = await expandGroupAndFocusFirstTab(groupId);
-
+    console.log(result)
     if (!result.success) {
       console.error("Failed to expand group:", result.error);
       // Optional: You could add a system message here if it fails
@@ -1711,16 +1685,19 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
               }`}
               style={{
                 wordWrap: "break-word",
-                whiteSpace: "preserve-breaks",
               }}
             >
-              {
+              {msg.text === helpMessage ? (
+                <div
+                  dangerouslySetInnerHTML={{ __html: helpMessageHTML }}
+                />
+              ) : (
                 <TranslatedText
                   msg={msg}
                   language={language}
                   translatorSession={languageSession}
                 />
-              }
+              )}
             </div>
           </div>
         );

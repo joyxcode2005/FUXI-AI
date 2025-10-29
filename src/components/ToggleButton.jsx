@@ -1,3 +1,4 @@
+// src/components/ToggleButton.jsx
 const ToggleButton = ({ isDark, onChange, enabled }) => {
   return (
     <label className="relative flex items-center cursor-pointer">
@@ -11,7 +12,8 @@ const ToggleButton = ({ isDark, onChange, enabled }) => {
         className={`relative w-10 h-6 bg-gray-200 hover:bg-gray-300 peer-focus:outline-0 rounded-full peer transition-all ease-in-out duration-500
         ${
           !isDark
-            ? "peer-checked:bg-slate-900 hover:peer-checked:bg-slate-900"
+            // CHANGED: From slate-900 to green-500/600 to match the send button
+            ? "peer-checked:bg-green-500 hover:peer-checked:bg-green-600"
             : "peer-checked:bg-yellow-400 hover:peer-checked:bg-yellow-500"
         }
         `}
@@ -26,7 +28,10 @@ const ToggleButton = ({ isDark, onChange, enabled }) => {
         {/* Text inside toggle */}
         <span
           className={`absolute inset-0 z-1 flex items-center justify-center text-[9px] font-bold tracking-wide transition-all duration-500
-          ${enabled ? (isDark ? "text-black" : "text-yellow-500") : "text-gray-400"}
+          ${
+            // CHANGED: From text-yellow-500 to text-white for light mode
+            enabled ? (isDark ? "text-black" : "text-black") : "text-gray-400"
+          }
           `}
         >
           AUTO

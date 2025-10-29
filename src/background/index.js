@@ -690,7 +690,7 @@ function detectPlatform(query) {
   }
   
   const platforms = {
-    youtube: ['youtube', 'video', 'tutorial',],
+    youtube: ['youtube', 'video', 'tutorial', 'learn'],
     reddit: ['reddit', 'discussion', 'subreddit'],
     amazon: ['amazon', 'buy', 'purchase', 'shop', 'product'],
     wikipedia: ['wikipedia', 'wiki', 'what is', 'who is'],

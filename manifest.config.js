@@ -39,4 +39,14 @@ export default defineManifest({
   side_panel: {
     default_path: "src/sidepanel/index.html",
   },
+
+  commands: {
+    _execute_action: {
+      suggested_key: {
+        default: "Alt+Shift+O",
+        mac: "MacCtrl+Shift+O",
+      },
+      description: "Open AI Tab Manager",
+    },
+  },
 });

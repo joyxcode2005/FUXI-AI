@@ -1,34 +1,18 @@
 import { useState, useRef, useEffect } from "react";
 import { ChevronDown, Check, Globe } from "lucide-react";
-
-const languages = [
-  { code: "en", name: "English", flag: "🇬🇧" },
-  { code: "zh", name: "中文 (Chinese)", flag: "🇨🇳" },
-  { code: "hi", name: "हिन्दी (Hindi)", flag: "🇮🇳" },
-  { code: "es", name: "Español (Spanish)", flag: "🇪🇸" },
-  { code: "fr", name: "Français (French)", flag: "🇫🇷" },
-  { code: "ar", name: "العربية (Arabic)", flag: "🇸🇦" },
-  { code: "bn", name: "বাংলা (Bengali)", flag: "🇧🇩" },
-  { code: "pt", name: "Português (Portuguese)", flag: "🇵🇹" },
-  { code: "ru", name: "Русский (Russian)", flag: "🇷🇺" },
-  { code: "ur", name: "اردو (Urdu)", flag: "🇵🇰" },
-];
+import { languages } from "../utils";
 
 export const LanguageDropdown = ({ isDark = true, onChange, value }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [selected, setSelected] = useState(value || languages[0]);
   const dropdownRef = useRef(null);
 
-  useEffect(() => {
-    // Sync internal state if the parent's value prop changes
-    if (value) {
-      setSelected(value);
-    }
-  }, [value]);
+  const selected =
+    languages.find((lang) => lang.code === value?.code) || languages[0];
 
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
+      console.log("Event: ", event);
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setIsOpen(false);
       }
@@ -39,7 +23,9 @@ export const LanguageDropdown = ({ isDark = true, onChange, value }) => {
   }, []);
 
   const handleSelect = (language) => {
-    setSelected(language);
+    // We still set 'isOpen' to false,
+    // but we ONLY call the parent's onChange.
+    // We do NOT call 'setSelected' anymore.
     setIsOpen(false);
     onChange?.(language);
   };
@@ -58,10 +44,6 @@ export const LanguageDropdown = ({ isDark = true, onChange, value }) => {
             ${isOpen ? "ring-2 ring-cyan-500/50" : ""}
           `}
       >
-        {/* <Globe
-            size={16}
-            className={isDark ? "text-cyan-400" : "text-cyan-600"}
-          /> */}
         <span className="text-lg">{selected.flag}</span>
         <ChevronDown
           size={16}

@@ -230,6 +230,19 @@ Assitant: "organize my tabs
 export const aiReadyMessage = `🤖 AI is ready! Type 'help' for commands.`;
 export const aiUnavailableMessage = `ℹ️ AI unavailable. Manual commands still work!`;
 
+export const languages = [
+  { code: "en", name: "English", flag: "🇬🇧" },
+  { code: "zh", name: "中文 (Chinese)", flag: "🇨🇳" },
+  { code: "hi", name: "हिन्दी (Hindi)", flag: "🇮🇳" },
+  { code: "es", name: "Español (Spanish)", flag: "🇪🇸" },
+  { code: "fr", name: "Français (French)", flag: "🇫🇷" },
+  { code: "ar", name: "العربية (Arabic)", flag: "🇸🇦" },
+  { code: "bn", name: "বাংলা (Bengali)", flag: "🇧🇩" },
+  { code: "pt", name: "Português (Portuguese)", flag: "🇵🇹" },
+  { code: "ru", name: "Русский (Russian)", flag: "🇷🇺" },
+  { code: "ur", name: "اردو (Urdu)", flag: "🇵🇰" },
+];
+
 // --- Grouping & Management Functions ---
 
 export async function getAllGroups() {

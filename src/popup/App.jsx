@@ -1,5 +1,17 @@
 // src/popup/App.jsx - REFINED UI VERSION 2 (Chat Area)
 import { useState, useRef, useEffect, useCallback } from "react";
+
+import { Sun } from "lucide-react";
+import { Moon } from "lucide-react";
+import { Boxes } from "lucide-react";
+import { Folder } from "lucide-react";
+import { Pencil } from "lucide-react";
+import { Trash2 } from "lucide-react";
+import { Ungroup } from "lucide-react";
+import { SendHorizontal } from "lucide-react";
+import { BotMessageSquare } from "lucide-react";
+import { MessageCircleQuestionMark } from "lucide-react";
+
 import {
   aiUnavailableMessage,
   completerSystemPrompt,
@@ -12,61 +24,16 @@ import {
   systemPrompt,
   ungroupTabs,
 } from "../utils";
-import { BotMessageSquare } from "lucide-react";
-import { Sun } from "lucide-react";
-import { Moon } from "lucide-react";
-import { Boxes } from "lucide-react";
+
 import Button from "../components/Button";
-import { MessageCircleQuestionMark } from "lucide-react";
-import { SendHorizontal } from "lucide-react";
-import { Folder } from "lucide-react";
-import { Pencil } from "lucide-react";
-import { Trash2 } from "lucide-react";
 import ToggleButton from "../components/ToggleButton";
 import LanguageDropdown from "../components/DropdownButton";
-import { memo } from "react";
-import { Ungroup } from "lucide-react";
+import TranslatedText from "../components/TranslatedText";
 
-const TranslatedText = memo(function TranslatedText({
-  msg,
-  language,
-  translatorSession,
-}) {
-  const [translated, setTranslated] = useState(msg?.text || "...");
 
-  useEffect(() => {
-    if (!msg?.text || !translatorSession) {
-      setTranslated(msg.text);
-      return;
-    }
-
-    if (language.code === "en") {
-      setTranslated(msg.text);
-      return;
-    }
-
-    let isCancelled = false;
-
-    (async () => {
-      try {
-        const result = await translatorSession.translate(msg.text);
-        if (!isCancelled) setTranslated(result);
-      } catch (err) {
-        console.error("Translation error:", err);
-        if (!isCancelled) setTranslated(msg.text);
-      }
-    })();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [msg?.text, language, translatorSession]);
-
-  return <div>{translated}</div>;
-});
 
 export default function App() {
-  const [title, setTitle] = useState("AI TABS");
+  const [title, setTitle] = useState("FUXI AI");
   const [active, setActive] = useState("Auto-Active");
   const [tabsText, setTabsText] = useState("Tabs Open");
   const [group, setGroup] = useState("Groups");
@@ -247,7 +214,7 @@ export default function App() {
       setLanguageSession(null);
 
       // Reset all UI text to English defaults
-      setTitle("AI TAB MANAGER");
+      setTitle("FUXI AI");
       setActive("Auto-Active");
       setTabsText("Tabs Open");
       setGroup("Groups");
@@ -1805,11 +1772,7 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
         {/* Row 1: Title & Controls */}
         <div className="relative flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
-            <div
-              className={`w-10 h-10 rounded-xl flex items-center justify-center text-2xl shadow-lg transform hover:scale-105 transition-transform text-white bg-gradient-to-br from-cyan-500 to-indigo-600`}
-            >
-              <BotMessageSquare size={24} />
-            </div>
+            <img src="/logo.png" alt="logo" className="w-8 h-8" />
             <h3
               className={`text-lg font-bold tracking-tight ${
                 isDark ? "text-white" : "text-slate-900"

@@ -29,7 +29,6 @@ const ToggleButton = ({ isDark, onChange, enabled }) => {
         <span
           className={`absolute inset-0 z-1 flex items-center justify-center text-[9px] font-bold tracking-wide transition-all duration-500
           ${
-            // CHANGED: From text-yellow-500 to text-white for light mode
             enabled ? (isDark ? "text-black" : "text-black") : "text-gray-400"
           }
           `}

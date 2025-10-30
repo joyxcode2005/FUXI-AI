@@ -712,45 +712,25 @@ export const parseAIResponse = (responseString, tabs = []) => {
   }
 };
 
-export async function expandGroupAndFocusFirstTab(groupId) {
-  if (!groupId || typeof groupId !== "number") {
-    console.error("Invalid groupId provided:", groupId);
-    return { success: false, error: "Invalid groupId." };
-  }
-
+export const closeGroupTabs = async (title) => {
   try {
-    // Step 1: Get the group's current state
-    const group = await chrome.tabGroups.get(groupId);
-
-    // Step 2: Expand the group if it's collapsed
-    if (group.collapsed) {
-      await chrome.tabGroups.update(groupId, { collapsed: false });
+    const groups = await chrome.tabGroups.query({ title });
+    if (groups.length === 0) {
+      return { success: false, error: "Group not found" };
     }
-
-    // Step 3: Find all tabs in that group
-    const tabsInGroup = await chrome.tabs.query({ groupId: groupId });
-    console.log("tab"+tabsInGroup)
-
-    // If the group is empty, we're done.
-    if (!tabsInGroup || tabsInGroup.length === 0) {
-      console.log(`Group ${groupId} was expanded but is empty.`);
-      return { success: true, message: "Group expanded, but it is empty." };
+    
+    const group = groups[0];
+    const tabs = await chrome.tabs.query({ groupId: group.id });
+    const tabIds = tabs.map(tab => tab.id);
+    
+    if (tabIds.length > 0) {
+      chrome.tabs.remove(tabIds);
     }
-
-    // Sort tabs by their index (position in the window) to find the first one
-    tabsInGroup.sort((a, b) => a.index - b.index);
-    const firstTab = tabsInGroup[0];
-    console.log("firstTab"+firstTab)
-    // Step 4: Focus the tab's window and then activate the tab
-    await chrome.windows.update(firstTab.windowId, { focused: true });
-    await chrome.tabs.update(firstTab.id, { active: true });
-
-    return { success: true, tabId: firstTab.id };
-  } catch (error) {
-    console.error(`Error expanding/focusing group ${groupId}:`, error);
-    return {
-      success: false,
-      error: error.message || "An unexpected error occurred.",
-    };
+    // The group will be removed automatically when its last tab is closed.
+    
+    return { success: true, count: tabIds.length };
+  } catch (err) {
+    console.error("Error closing group tabs:", err);
+    return { success: false, error: err.message };
   }
-}
+};

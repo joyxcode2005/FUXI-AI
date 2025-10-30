@@ -14,8 +14,8 @@ import { MessageCircleQuestionMark } from "lucide-react";
 
 import {
   aiUnavailableMessage,
+  closeGroupTabs,
   completerSystemPrompt,
-  expandGroupAndFocusFirstTab,
   getAllGroups,
   groupExistingTabs,
   helpMessage,
@@ -65,6 +65,7 @@ export default function App() {
   const chatEndRef = useRef(null);
   const proofreaderRef = useRef(null);
   const completerSessionRef = useRef(null);
+  const textInputRef = useRef(null); // <-- ADD THIS REF
   const [languageSession, setLanguageSession] = useState(null);
 
   const promptRef = useRef(prompt);
@@ -184,6 +185,13 @@ export default function App() {
     initializeAICompleter();
     updateTabCount();
     checkBackgroundAIStatus();
+
+    // --- ADD THIS BLOCK TO FOCUS INPUT ---
+    // Focus the text input on popup open, but only if we're in chat view
+    if (textInputRef.current && !showGroupManagerRef.current) {
+      textInputRef.current.focus();
+    }
+    // --- END OF ADDED BLOCK ---
   }, []); // This should only run once on mount
 
   useEffect(() => {
@@ -255,7 +263,7 @@ export default function App() {
           newGroupText,
           newGroupsText,
         ] = await Promise.all([
-          newLanguageSession.translate("AI TAB MANAGER"),
+          newLanguageSession.translate("FUXI AI"),
           newLanguageSession.translate("Auto-Active"),
           newLanguageSession.translate("Tabs Open"),
           newLanguageSession.translate("Groups"),
@@ -1076,19 +1084,24 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
     setNewGroupName("");
   };
 
-  const handleGroupClick = async (groupId) => {
-    if (!groupId) return;
-
-    // We don't need to set global loading, as this should be fast
-    console.log(`Expanding and focusing group ${groupId}`);
-    const result = await expandGroupAndFocusFirstTab(groupId);
-    console.log(result)
-    if (!result.success) {
-      console.error("Failed to expand group:", result.error);
-      // Optional: You could add a system message here if it fails
-      // addMessage(`❌ Failed to focus group: ${result.error}`, "system");
+  const handleDeleteGroup = async (group) => {
+    const { title, tabCount } = group;
+    // This is a destructive action, so a confirmation is a good idea.
+    if (window.confirm(`Are you sure you want to delete the group "${title}" and close all ${tabCount} tabs?`)) {
+      const result = await closeGroupTabs(title); // The util function just needs the title
+      if (result.success) {
+        addMessage(
+          `✅ Deleted group "${title}" and closed ${result.count} tabs`,
+          "bot"
+        );
+        await loadGroups(); // Refresh the group list
+        await updateTabCount(); // Refresh the tab count
+      } else {
+        addMessage(`❌ Failed to delete group "${title}": ${result.error}`, "bot");
+      }
     }
   };
+
 
   const handleSend = async () => {
     let text = prompt.trim();
@@ -1546,8 +1559,6 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
                       }`}
                     >
                       <div
-                        onClick={() => handleGroupClick(group.id)}
-                        title={`Switch to group: ${group.title}`}
                         className="flex items-center gap-3 cursor-pointer"
                       >
                         <div
@@ -1598,6 +1609,7 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
                       <div className="flex gap-1">
                         <button
                           onClick={() => handleRenameStart(group)}
+                          title="Rename group"
                           className={`p-2 rounded-lg transition-all hover:scale-110 cursor-pointer ${
                             isDark
                               ? "text-slate-400 hover:bg-slate-700 hover:text-green-400"
@@ -1609,6 +1621,7 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
 
                         <button
                           onClick={() => handleUngroup(group.title)}
+                          title="Ungroup (move tabs out)"
                           className={`p-2 rounded-lg transition-all hover:scale-110 cursor-pointer ${
                             isDark
                               ? "text-slate-400 hover:bg-slate-700 hover:text-orange-400"
@@ -1617,9 +1630,22 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
                         >
                           <Ungroup size={16} />
                         </button>
+
+                        {/* --- ADDED THIS BUTTON --- */}
+                        <button
+                          onClick={() => handleDeleteGroup(group)}
+                          title="Delete group (closes all tabs)"
+                          className={`p-2 rounded-lg transition-all hover:scale-110 cursor-pointer ${
+                            isDark
+                              ? "text-slate-400 hover:bg-slate-700 hover:text-red-400"
+                              : "text-slate-500 hover:bg-gray-200 hover:text-red-600"
+                          }`}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                        {/* --- END OF ADDED BUTTON --- */}
                       </div>
-                    </div>
-                  </>
+                      </div>                  </>
                 )}
               </div>
             ))}
@@ -1919,6 +1945,7 @@ bg-transparent
 `}
               />
               <input
+                ref={textInputRef} // <-- ADD THE REF HERE
                 type="text"
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}

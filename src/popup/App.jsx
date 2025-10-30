@@ -147,7 +147,7 @@ export default function App() {
         } else {
           setMessages([
             {
-              text: "👋 Welcome to AI Tab Manager! Type 'help' to see what I can do.",
+              text: "👋 Welcome to  FUXI AI! Type 'help' to see what I can do.",
               sender: "system",
               timestamp: Date.now(),
             },

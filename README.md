@@ -2,13 +2,9 @@
 
 # FUXI AI
 
-<h3>Streamline Browsing, Master Your Digital World</h3>
+<h4>FUXI AI is a privacy-first Chrome Extension that transforms your browser into an intelligent, organized, and multilingual workspace. It uses Google's built-in, on-device AI models, including the powerful Gemini Nano, to give you a powerful natural language interface for your tabs — solving the problem of tab chaos without ever sending your personal data to the cloud.
+</h4>
 
-<p>
-  <img src="https://img.shields.io/badge/last%20commit-today-00AEFF?style=for-the-badge&logo=git&logoColor=white" alt="Last Commit">
-  <img src="https://img.shields.io/badge/javascript-98.1%25-F7DF1E?style=for-the-badge&logo=javascript&logoColor=black" alt="JavaScript">
-  <img src="https://img.shields.io/badge/languages-3-blue?style=for-the-badge" alt="Languages">
-</p>
 
 <h3>Built with the tools and technologies:</h3>
 

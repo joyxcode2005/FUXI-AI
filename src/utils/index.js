@@ -1,5 +1,23 @@
-// src/utils/index.js - COMPLETE VERSION
-export const systemPrompt = `You are an expert Chrome Tab Organization AI. Your mission is to intelligently group browser tabs based on context, task, and semantic relationships.
+/*
+ * This file is part of FUXI AI.
+ *
+ * FUXI AI is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * FUXI AI is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with FUXI AI.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+
+export const systemPrompt = `
+You are an expert Chrome Tab Organization AI. Your mission is to intelligently group browser tabs based on context, task, and semantic relationships.
 
 === CRITICAL OUTPUT RULES ===
 1. Respond ONLY with valid JSON. NO markdown, NO code blocks, NO extra text.

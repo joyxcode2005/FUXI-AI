@@ -15,7 +15,6 @@
  * along with FUXI AI.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-
 import { useState, useRef, useEffect, useCallback } from "react";
 
 import { Sun } from "lucide-react";
@@ -36,7 +35,6 @@ import {
   getAllGroups,
   groupExistingTabs,
   helpMessage,
-  helpMessageHTML,
   parseAIResponse,
   renameGroup,
   systemPrompt,
@@ -47,8 +45,7 @@ import Button from "../components/Button";
 import ToggleButton from "../components/ToggleButton";
 import LanguageDropdown from "../components/DropdownButton";
 import TranslatedText from "../components/TranslatedText";
-
-
+import HelpMessageDisplay from "../components/HelpMessageDisplay";
 
 export default function App() {
   const [title, setTitle] = useState("FUXI AI");
@@ -1104,7 +1101,11 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
   const handleDeleteGroup = async (group) => {
     const { title, tabCount } = group;
     // This is a destructive action, so a confirmation is a good idea.
-    if (window.confirm(`Are you sure you want to delete the group "${title}" and close all ${tabCount} tabs?`)) {
+    if (
+      window.confirm(
+        `Are you sure you want to delete the group "${title}" and close all ${tabCount} tabs?`
+      )
+    ) {
       const result = await closeGroupTabs(title); // The util function just needs the title
       if (result.success) {
         addMessage(
@@ -1114,11 +1115,13 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
         await loadGroups(); // Refresh the group list
         await updateTabCount(); // Refresh the tab count
       } else {
-        addMessage(`❌ Failed to delete group "${title}": ${result.error}`, "bot");
+        addMessage(
+          `❌ Failed to delete group "${title}": ${result.error}`,
+          "bot"
+        );
       }
     }
   };
-
 
   const handleSend = async () => {
     let text = prompt.trim();
@@ -1575,9 +1578,7 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
                           : "bg-gray-50 border-gray-200 hover:bg-gray-100"
                       }`}
                     >
-                      <div
-                        className="flex items-center gap-3 cursor-pointer"
-                      >
+                      <div className="flex items-center gap-3 cursor-pointer">
                         <div
                           className={`w-3 h-3 rounded-full ${
                             group.color === "blue"
@@ -1662,7 +1663,8 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
                         </button>
                         {/* --- END OF ADDED BUTTON --- */}
                       </div>
-                      </div>                  </>
+                    </div>{" "}
+                  </>
                 )}
               </div>
             ))}
@@ -1731,9 +1733,7 @@ All IDs: ${tabs.map((t) => t.id).join(", ")}`;
               }}
             >
               {msg.text === helpMessage ? (
-                <div
-                  dangerouslySetInnerHTML={{ __html: helpMessageHTML }}
-                />
+                <HelpMessageDisplay language={language} />
               ) : (
                 <TranslatedText
                   msg={msg}
